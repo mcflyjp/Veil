@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:matrix/matrix.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart' as sqflite;
@@ -50,33 +53,71 @@ class ClientManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Matrix registration requires a two-step UIA handshake.
+  /// We handle it with raw HTTP so the SDK's init() lifecycle is not affected,
+  /// then log in via the SDK to get a proper session.
   Future<void> register(String username, String password, String? displayName) async {
     await _client.checkHomeserver(Uri.parse(kHomeserver));
 
-    // Matrix UIA: first call gets the session token, second completes dummy auth.
-    String? uiaSession;
-    try {
-      await _client.register(
-        username: username,
-        password: password,
-        initialDeviceDisplayName: 'Veil',
-      );
-    } on MatrixException catch (e) {
-      uiaSession = e.session;
-      if (uiaSession == null) rethrow;
-      await _client.register(
-        username: username,
-        password: password,
-        initialDeviceDisplayName: 'Veil',
-        auth: AuthenticationData.fromJson({
-          'type': 'm.login.dummy',
-          'session': uiaSession,
-        }),
+    final uri = Uri.parse('$kHomeserver/_matrix/client/v3/register');
+
+    // Step 1 — trigger the UIA challenge and get the session token.
+    final resp1 = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'username': username, 'password': password}),
+    );
+    final body1 = jsonDecode(resp1.body) as Map<String, Object?>;
+
+    if (resp1.statusCode == 200) {
+      // Unlikely: server accepted without UIA — still need a login call.
+      await _doLogin(username, password, displayName);
+      return;
+    }
+
+    final session = body1['session'] as String?;
+    if (session == null) {
+      throw Exception(
+        '${body1['errcode'] ?? 'ERROR'}: ${body1['error'] ?? resp1.body}',
       );
     }
 
+    // Step 2 — complete the m.login.dummy stage.
+    final resp2 = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'username': username,
+        'password': password,
+        'initial_device_display_name': 'Veil',
+        'auth': {'type': 'm.login.dummy', 'session': session},
+      }),
+    );
+
+    if (resp2.statusCode != 200) {
+      final err = jsonDecode(resp2.body) as Map<String, Object?>;
+      throw Exception(
+        '${err['errcode'] ?? 'ERROR'}: ${err['error'] ?? resp2.body}',
+      );
+    }
+
+    // Account created — log in via SDK to initialise encryption and sync.
+    await _doLogin(username, password, displayName);
+  }
+
+  Future<void> _doLogin(String username, String password, String? displayName) async {
+    await _client.login(
+      LoginType.mLoginPassword,
+      identifier: AuthenticationUserIdentifier(user: username),
+      password: password,
+      initialDeviceDisplayName: 'Veil',
+    );
     if (displayName != null && displayName.isNotEmpty) {
-      await _client.setProfileField(_client.userID!, 'displayname', {'displayname': displayName});
+      await _client.setProfileField(
+        _client.userID!,
+        'displayname',
+        {'displayname': displayName},
+      );
     }
     notifyListeners();
   }
