@@ -52,11 +52,29 @@ class ClientManager extends ChangeNotifier {
 
   Future<void> register(String username, String password, String? displayName) async {
     await _client.checkHomeserver(Uri.parse(kHomeserver));
-    await _client.register(
-      username: username,
-      password: password,
-      initialDeviceDisplayName: 'Veil',
-    );
+
+    // Matrix UIA: first call gets the session token, second completes dummy auth.
+    String? uiaSession;
+    try {
+      await _client.register(
+        username: username,
+        password: password,
+        initialDeviceDisplayName: 'Veil',
+      );
+    } on MatrixException catch (e) {
+      uiaSession = e.session;
+      if (uiaSession == null) rethrow;
+      await _client.register(
+        username: username,
+        password: password,
+        initialDeviceDisplayName: 'Veil',
+        auth: AuthenticationData.fromJson({
+          'type': 'm.login.dummy',
+          'session': uiaSession,
+        }),
+      );
+    }
+
     if (displayName != null && displayName.isNotEmpty) {
       await _client.setProfileField(_client.userID!, 'displayname', {'displayname': displayName});
     }
