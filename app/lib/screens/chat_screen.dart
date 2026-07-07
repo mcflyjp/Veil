@@ -4,9 +4,16 @@ import 'package:matrix/matrix.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
 import '../widgets/disappearing_timer_dialog.dart';
+
+// Available AIM-era fonts
+const _kFonts = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Comic Sans MS', 'Georgia'];
+const _kSizes = [11.0, 12.0, 13.0, 14.0, 16.0, 18.0, 20.0];
+const _kDefaultFont = 'Arial';
+const _kDefaultSize = 14.0;
 
 class ChatScreen extends StatefulWidget {
   final String roomId;
@@ -23,13 +30,34 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _loadingTimeline = true;
   bool _sending = false;
 
+  // Per-conversation font prefs
+  String _fontFamily = _kDefaultFont;
+  double _fontSize   = _kDefaultSize;
+
+  String get _prefKey => 'chat_font_${widget.roomId}';
+
   Room? get _room =>
       context.read<ClientManager>().roomById(Uri.decodeComponent(widget.roomId));
 
   @override
   void initState() {
     super.initState();
+    _loadPrefs();
     _loadTimeline();
+  }
+
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _fontFamily = prefs.getString('${_prefKey}_family') ?? _kDefaultFont;
+      _fontSize   = prefs.getDouble('${_prefKey}_size')   ?? _kDefaultSize;
+    });
+  }
+
+  Future<void> _savePrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('${_prefKey}_family', _fontFamily);
+    await prefs.setDouble('${_prefKey}_size', _fontSize);
   }
 
   Future<void> _loadTimeline() async {
@@ -89,6 +117,20 @@ class _ChatScreenState extends State<ChatScreen> {
     await room.client.setRoomStateWithKey(room.id, 'm.room.message_retention', '', content);
   }
 
+  void _openFontPicker() {
+    showDialog(
+      context: context,
+      builder: (_) => _FontPickerDialog(
+        currentFamily: _fontFamily,
+        currentSize: _fontSize,
+        onChanged: (family, size) {
+          setState(() { _fontFamily = family; _fontSize = size; });
+          _savePrefs();
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final mgr = context.watch<ClientManager>();
@@ -105,14 +147,14 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
 
-    final events = _timeline?.events.reversed.toList() ?? [];
+    // events are newest-first from the SDK; reverse: true puts index-0 at bottom
+    final events = _timeline?.events ?? [];
     final msgEvents = events
         .where((e) => e.type == EventTypes.Message || e.type == EventTypes.Encrypted)
         .toList();
 
     return Scaffold(
       body: Column(children: [
-        // ── AIM chat title bar ─────────────────────────────────────────
         _ChatTitleBar(
           title: room.getLocalizedDisplayname(),
           isDark: isDark,
@@ -128,24 +170,28 @@ class _ChatScreenState extends State<ChatScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : msgEvents.isEmpty
                     ? Center(child: Text('No messages yet. Say something!',
-                        style: TextStyle(fontSize: 11, color: isDark ? Colors.grey[500] : Colors.grey[600])))
+                        style: TextStyle(fontSize: 11,
+                          color: isDark ? Colors.grey[500] : Colors.grey[600])))
                     : ListView.builder(
                         controller: _scrollCtrl,
-                        reverse: true,
+                        reverse: true,          // newest (index 0) at bottom ✓
                         padding: const EdgeInsets.all(8),
                         itemCount: msgEvents.length,
                         itemBuilder: (_, i) {
                           final event = msgEvents[i];
                           final isMe = event.senderId == myId;
-                          return _AimMessageLine(event: event, isMe: isMe, isDark: isDark);
+                          return _AimMessageLine(
+                            event: event, isMe: isMe, isDark: isDark,
+                            fontFamily: _fontFamily, fontSize: _fontSize,
+                          );
                         },
                       ),
           ),
         ),
 
-        // ── Toolbar strip (like AIM's font/format bar) ────────────────
+        // ── Toolbar strip ─────────────────────────────────────────────
         Container(
-          height: 26,
+          height: 28,
           color: isDark ? const Color(0xFF1A1A1A) : AimColors.toolbarBg,
           padding: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
@@ -158,6 +204,28 @@ class _ChatScreenState extends State<ChatScreen> {
             _BarBtn(icon: Icons.image_outlined, tooltip: 'Send image', onTap: _sending ? null : _sendImage),
             _BarBtn(icon: Icons.attach_file, tooltip: 'Send file', onTap: _sending ? null : _sendFile),
             _BarBtn(icon: Icons.timer_outlined, tooltip: 'Disappearing messages', onTap: _setDisappearing),
+            const SizedBox(width: 4),
+            // Font button — shows current font info
+            InkWell(
+              onTap: _openFontPicker,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  border: Border.all(color: isDark ? AimColors.darkBorder : AimColors.winBorder),
+                  color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text('A', style: TextStyle(
+                    fontFamily: _fontFamily, fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? AimColors.darkText : Colors.black)),
+                  const SizedBox(width: 4),
+                  Text('$_fontFamily · ${_fontSize.toInt()}pt',
+                    style: TextStyle(fontSize: 9,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600])),
+                ]),
+              ),
+            ),
           ]),
         ),
 
@@ -168,7 +236,7 @@ class _ChatScreenState extends State<ChatScreen> {
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Expanded(
               child: Container(
-                constraints: const BoxConstraints(maxHeight: 100),
+                constraints: const BoxConstraints(maxHeight: 120),
                 decoration: BoxDecoration(
                   color: isDark ? AimColors.darkInputBg : Colors.white,
                   border: Border.all(color: isDark ? AimColors.darkBorder : AimColors.inputBorder),
@@ -177,11 +245,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   controller: _inputCtrl,
                   maxLines: null,
                   textInputAction: TextInputAction.newline,
-                  style: TextStyle(fontFamily: 'Arial', fontSize: 12,
+                  style: TextStyle(fontFamily: _fontFamily, fontSize: _fontSize,
                     color: isDark ? AimColors.darkText : Colors.black),
                   decoration: InputDecoration(
                     hintText: 'Type a message...',
-                    hintStyle: TextStyle(fontSize: 11,
+                    hintStyle: TextStyle(fontSize: _fontSize * 0.85,
                       color: isDark ? Colors.grey[600] : Colors.grey[500]),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.all(6),
@@ -192,7 +260,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(width: 6),
             SizedBox(
-              height: 32,
+              height: 34,
               child: ElevatedButton(
                 onPressed: _sending ? null : _sendText,
                 style: ElevatedButton.styleFrom(
@@ -202,7 +270,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: _sending
                     ? const SizedBox(width: 12, height: 12,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Send', style: TextStyle(fontSize: 11)),
+                    : const Text('Send', style: TextStyle(fontSize: 12)),
               ),
             ),
           ]),
@@ -212,18 +280,140 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-// ── AIM-style message line: "ScreenName: message text" ────────────────────────
+// ── Font picker dialog ─────────────────────────────────────────────────────────
+class _FontPickerDialog extends StatefulWidget {
+  final String currentFamily;
+  final double currentSize;
+  final void Function(String family, double size) onChanged;
+
+  const _FontPickerDialog({
+    required this.currentFamily,
+    required this.currentSize,
+    required this.onChanged,
+  });
+
+  @override
+  State<_FontPickerDialog> createState() => _FontPickerDialogState();
+}
+
+class _FontPickerDialogState extends State<_FontPickerDialog> {
+  late String _family;
+  late double _size;
+
+  @override
+  void initState() {
+    super.initState();
+    _family = widget.currentFamily;
+    _size   = widget.currentSize;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return AlertDialog(
+      title: const Text('Font Settings', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+      contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      content: SizedBox(
+        width: 280,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Font', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: isDark ? AimColors.darkBorder : AimColors.winBorder)),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _family,
+                isExpanded: true,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                style: TextStyle(fontSize: 12, color: isDark ? AimColors.darkText : Colors.black),
+                dropdownColor: isDark ? AimColors.darkInputBg : Colors.white,
+                items: _kFonts.map((f) => DropdownMenuItem(
+                  value: f,
+                  child: Text(f, style: TextStyle(fontFamily: f, fontSize: 12)),
+                )).toList(),
+                onChanged: (v) => setState(() => _family = v!),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text('Size', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6, runSpacing: 6,
+            children: _kSizes.map((s) {
+              final selected = s == _size;
+              return GestureDetector(
+                onTap: () => setState(() => _size = s),
+                child: Container(
+                  width: 36, height: 28,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? const Color(0xFF17369C)
+                        : (isDark ? AimColors.darkInputBg : Colors.white),
+                    border: Border.all(
+                      color: selected
+                          ? const Color(0xFF17369C)
+                          : (isDark ? AimColors.darkBorder : AimColors.winBorder)),
+                  ),
+                  child: Text('${s.toInt()}',
+                    style: TextStyle(fontSize: 11,
+                      color: selected ? Colors.white : (isDark ? AimColors.darkText : Colors.black),
+                      fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+          // Live preview
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: isDark ? AimColors.darkChatBg : Colors.white,
+              border: Border.all(color: isDark ? AimColors.darkBorder : AimColors.winBorder)),
+            child: RichText(text: TextSpan(children: [
+              TextSpan(text: 'You: ',
+                style: TextStyle(fontFamily: _family, fontSize: _size,
+                  fontWeight: FontWeight.bold, color: AimColors.myNameColor)),
+              TextSpan(text: 'hey, how are you?',
+                style: TextStyle(fontFamily: _family, fontSize: _size,
+                  color: isDark ? AimColors.darkText : AimColors.msgTextColor)),
+            ])),
+          ),
+          const SizedBox(height: 12),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: () {
+            widget.onChanged(_family, _size);
+            Navigator.pop(context);
+          },
+          child: const Text('Apply'),
+        ),
+      ],
+    );
+  }
+}
+
+// ── AIM-style message line ─────────────────────────────────────────────────────
 class _AimMessageLine extends StatelessWidget {
   final Event event;
   final bool isMe;
   final bool isDark;
+  final String fontFamily;
+  final double fontSize;
 
-  const _AimMessageLine({required this.event, required this.isMe, required this.isDark});
+  const _AimMessageLine({
+    required this.event, required this.isMe, required this.isDark,
+    required this.fontFamily, required this.fontSize,
+  });
 
-  String get _senderName {
-    final id = event.senderId;
-    return id.split(':').first.replaceFirst('@', '');
-  }
+  String get _senderName =>
+      event.senderId.split(':').first.replaceFirst('@', '');
 
   @override
   Widget build(BuildContext context) {
@@ -231,58 +421,57 @@ class _AimMessageLine extends StatelessWidget {
         ? (isDark ? AimColors.darkMyName    : AimColors.myNameColor)
         : (isDark ? AimColors.darkTheirName : AimColors.theirNameColor);
     final textColor = isDark ? AimColors.darkText : AimColors.msgTextColor;
-    final time = event.originServerTs;
-    final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    final t = event.originServerTs;
+    final timeStr = '${t.hour.toString().padLeft(2,'0')}:${t.minute.toString().padLeft(2,'0')}';
 
     if (event.type == EventTypes.Encrypted) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 1),
+        padding: const EdgeInsets.symmetric(vertical: 2),
         child: RichText(text: TextSpan(children: [
-          TextSpan(text: '[$timeStr] ', style: TextStyle(fontSize: 10, color: Colors.grey[500])),
-          TextSpan(text: '$_senderName: ', style: TextStyle(fontWeight: FontWeight.bold, color: nameColor, fontSize: 12)),
-          TextSpan(text: '🔒 Encrypted message', style: TextStyle(color: Colors.grey[500], fontSize: 11, fontStyle: FontStyle.italic)),
+          TextSpan(text: '[$timeStr] ',
+            style: TextStyle(fontSize: fontSize * 0.75, color: Colors.grey[500], fontFamily: fontFamily)),
+          TextSpan(text: '$_senderName: ',
+            style: TextStyle(fontFamily: fontFamily, fontSize: fontSize, fontWeight: FontWeight.bold, color: nameColor)),
+          TextSpan(text: '🔒 Encrypted',
+            style: TextStyle(fontFamily: fontFamily, fontSize: fontSize, color: Colors.grey[500], fontStyle: FontStyle.italic)),
         ])),
       );
     }
 
-    final body = event.body;
     final msgType = event.messageType;
-
-    Widget content;
+    String displayText;
     if (msgType == MessageTypes.Image) {
-      content = Padding(
-        padding: const EdgeInsets.only(top: 2),
-        child: Row(children: [
-          const Icon(Icons.image, size: 14),
-          const SizedBox(width: 4),
-          Text('[Image: ${event.body}]', style: TextStyle(color: textColor, fontSize: 11, fontStyle: FontStyle.italic)),
-        ]),
-      );
-    } else if (msgType == MessageTypes.File || msgType == MessageTypes.Audio || msgType == MessageTypes.Video) {
-      final label = msgType == MessageTypes.Audio ? 'Audio' : msgType == MessageTypes.Video ? 'Video' : 'File';
-      content = Row(children: [
-        const Icon(Icons.attach_file, size: 14),
-        const SizedBox(width: 4),
-        Text('[$label: ${event.body}]', style: TextStyle(color: textColor, fontSize: 11, fontStyle: FontStyle.italic)),
-      ]);
+      displayText = '[Image: ${event.body}]';
+    } else if (msgType == MessageTypes.Audio) {
+      displayText = '[Audio: ${event.body}]';
+    } else if (msgType == MessageTypes.Video) {
+      displayText = '[Video: ${event.body}]';
+    } else if (msgType == MessageTypes.File) {
+      displayText = '[File: ${event.body}]';
     } else {
-      content = Text(body, style: TextStyle(color: textColor, fontSize: 12));
+      displayText = event.body;
     }
 
+    final isAttachment = msgType != MessageTypes.Text && msgType != MessageTypes.Notice;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('[$timeStr] ', style: TextStyle(fontSize: 10, color: Colors.grey[500])),
-        Expanded(child: RichText(text: TextSpan(children: [
-          TextSpan(text: '$_senderName: ',
-            style: TextStyle(fontWeight: FontWeight.bold, color: nameColor, fontSize: 12, fontFamily: 'Arial')),
-          WidgetSpan(alignment: PlaceholderAlignment.baseline, baseline: TextBaseline.alphabetic, child: content),
-        ]))),
-      ]),
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: RichText(text: TextSpan(children: [
+        TextSpan(text: '[$timeStr] ',
+          style: TextStyle(fontSize: fontSize * 0.75, color: Colors.grey[500], fontFamily: fontFamily)),
+        TextSpan(text: '$_senderName: ',
+          style: TextStyle(fontFamily: fontFamily, fontSize: fontSize, fontWeight: FontWeight.bold, color: nameColor)),
+        TextSpan(text: displayText,
+          style: TextStyle(
+            fontFamily: fontFamily, fontSize: fontSize,
+            color: isAttachment ? Colors.grey[600] : textColor,
+            fontStyle: isAttachment ? FontStyle.italic : FontStyle.normal)),
+      ])),
     );
   }
 }
 
+// ── Shared widgets ─────────────────────────────────────────────────────────────
 class _ChatTitleBar extends StatelessWidget {
   final String title;
   final bool isDark;
@@ -293,15 +482,14 @@ class _ChatTitleBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     height: 28,
-    decoration: BoxDecoration(
-      gradient: LinearGradient(colors: isDark
-          ? [AimColors.darkTitleBar, const Color(0xFF1A3A6A)]
-          : [AimColors.titleBarStart, AimColors.titleBarEnd]),
-    ),
+    decoration: BoxDecoration(gradient: LinearGradient(colors: isDark
+        ? [AimColors.darkTitleBar, const Color(0xFF1A3A6A)]
+        : [AimColors.titleBarStart, AimColors.titleBarEnd])),
     padding: const EdgeInsets.symmetric(horizontal: 4),
     child: Row(children: [
       InkWell(onTap: onBack,
-        child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.arrow_back, color: Colors.white, size: 14))),
+        child: const Padding(padding: EdgeInsets.all(4),
+          child: Icon(Icons.arrow_back, color: Colors.white, size: 14))),
       const Icon(Icons.lock, color: Colors.white, size: 12),
       const SizedBox(width: 4),
       Expanded(child: Text('Veil — $title',
@@ -309,7 +497,8 @@ class _ChatTitleBar extends StatelessWidget {
         overflow: TextOverflow.ellipsis)),
       if (onTimer != null)
         InkWell(onTap: onTimer,
-          child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.timer_outlined, color: Colors.white, size: 14))),
+          child: const Padding(padding: EdgeInsets.all(4),
+            child: Icon(Icons.timer_outlined, color: Colors.white, size: 14))),
     ]),
   );
 }
@@ -328,10 +517,9 @@ class _BarBtn extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-          child: Icon(icon, size: 16, color: onTap == null
-              ? Colors.grey
-              : (isDark ? Colors.grey[300] : Colors.black87)),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Icon(icon, size: 16,
+            color: onTap == null ? Colors.grey : (isDark ? Colors.grey[300] : Colors.black87)),
         ),
       ),
     );
