@@ -27,7 +27,7 @@ class SettingsScreen extends StatelessWidget {
           isDark: isDark,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, size: 14, color: Colors.white),
-            onPressed: () => context.go('/buddylist'),
+            onPressed: () => context.pop(),
           ),
         ),
       ),

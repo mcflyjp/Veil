@@ -179,16 +179,17 @@ class _TitleBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
     Widget bar = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: EdgeInsets.fromLTRB(16, topPad + 16, 8, 16),
       child: Row(children: [
-        Icon(Icons.lock, color: Colors.white.withAlpha(230), size: 18),
-        const SizedBox(width: 8),
+        Icon(Icons.lock, color: Colors.white.withAlpha(230), size: 22),
+        const SizedBox(width: 10),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('Veil',
-              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
           Text(screenName,
-              style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 12),
+              style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 13),
               overflow: TextOverflow.ellipsis),
         ])),
         // Theme cycle button
@@ -245,10 +246,10 @@ class _TitleIconBtn extends StatelessWidget {
     message: tooltip,
     child: InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(24),
       child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: Icon(icon, color: Colors.white.withAlpha(220), size: 20),
+        padding: const EdgeInsets.all(10),
+        child: Icon(icon, color: Colors.white.withAlpha(220), size: 24),
       ),
     ),
   );
@@ -469,6 +470,7 @@ class _BottomToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
     Widget bar = Row(children: [
       _ToolbarBtn(icon: Icons.message, label: 'IM', tc: tc, onTap: onIM),
       _ToolbarBtn(icon: Icons.settings, label: 'Settings', tc: tc, onTap: onSettings),
@@ -481,12 +483,12 @@ class _BottomToolbar extends StatelessWidget {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: Container(
-            height: 64,
+            padding: EdgeInsets.only(left: 8, right: 8, bottom: bottomPad),
+            height: 68 + bottomPad,
             decoration: BoxDecoration(
               color: tc.toolbarBg,
               border: Border(top: BorderSide(color: Colors.white.withAlpha(20))),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: bar,
           ),
         ),
@@ -494,9 +496,9 @@ class _BottomToolbar extends StatelessWidget {
     }
 
     return Container(
-      height: 64,
+      height: 68 + bottomPad,
       color: tc.toolbarBg,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: EdgeInsets.only(left: 8, right: 8, bottom: bottomPad),
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: tc.divider == Colors.transparent
             ? Colors.white.withAlpha(20) : tc.divider)),
@@ -518,11 +520,11 @@ class _ToolbarBtn extends StatelessWidget {
     onTap: onTap,
     borderRadius: BorderRadius.circular(8),
     child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 22, color: tc.toolbarText),
-        const SizedBox(height: 2),
-        Text(label, style: TextStyle(fontSize: 11, color: tc.toolbarText)),
+        Icon(icon, size: 26, color: tc.toolbarText),
+        const SizedBox(height: 3),
+        Text(label, style: TextStyle(fontSize: 13, color: tc.toolbarText)),
       ]),
     ),
   );
