@@ -6,8 +6,36 @@ import 'core/aim_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final clientManager = ClientManager();
-  await clientManager.init();
+
+  ClientManager? clientManager;
+  Object? startupError;
+
+  try {
+    clientManager = ClientManager();
+    await clientManager.init();
+  } catch (e) {
+    startupError = e;
+  }
+
+  if (startupError != null || clientManager == null) {
+    runApp(MaterialApp(
+      home: Scaffold(
+        backgroundColor: const Color(0xFF003580),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Startup error:\n$startupError',
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ),
+    ));
+    return;
+  }
+
   runApp(
     MultiProvider(
       providers: [
