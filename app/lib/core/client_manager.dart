@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:matrix/matrix.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqflite/sqflite.dart' as sqflite;
 
 const kHomeserver = 'https://matrix.veilmsg.com';
 
@@ -13,7 +15,16 @@ class ClientManager extends ChangeNotifier {
   bool get isLoggedIn => _client.isLogged();
 
   Future<void> init() async {
-    final db = await MatrixSdkDatabase.init('veil_db');
+    late MatrixSdkDatabase db;
+    if (kIsWeb) {
+      db = await MatrixSdkDatabase.init('veil_db');
+    } else {
+      final dbPath = await sqflite.getDatabasesPath();
+      final sqfliteDb = await sqflite.openDatabase(
+        p.join(dbPath, 'veil_db.sqlite'),
+      );
+      db = await MatrixSdkDatabase.init('veil_db', database: sqfliteDb);
+    }
     _client = Client('Veil', database: db);
 
     await _client.init(
