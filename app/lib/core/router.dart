@@ -1,10 +1,10 @@
 import 'package:go_router/go_router.dart';
 import 'client_manager.dart';
 import '../screens/login_screen.dart';
-import '../screens/buddy_list_screen.dart';
 import '../screens/chat_screen.dart';
 import '../screens/new_chat_screen.dart';
 import '../screens/settings_screen.dart';
+import '../widgets/split_shell.dart';
 
 GoRouter buildRouter(ClientManager mgr) => GoRouter(
       initialLocation: '/buddylist',
@@ -19,22 +19,29 @@ GoRouter buildRouter(ClientManager mgr) => GoRouter(
       },
       routes: [
         GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-        GoRoute(
-          path: '/buddylist',
-          builder: (_, __) => const BuddyListScreen(),
+
+        // ShellRoute keeps BuddyListScreen mounted while child routes change
+        ShellRoute(
+          builder: (context, state, child) => SplitShell(
+            atRoot: state.matchedLocation == '/buddylist',
+            child: child,
+          ),
           routes: [
             GoRoute(
-              path: 'chat/:roomId',
-              builder: (_, state) => ChatScreen(roomId: state.pathParameters['roomId']!),
+              path: '/buddylist',
+              // Right-panel placeholder when no conversation is selected
+              builder: (_, __) => const SelectConversationPanel(),
+              routes: [
+                GoRoute(
+                  path: 'chat/:roomId',
+                  builder: (_, state) =>
+                      ChatScreen(roomId: state.pathParameters['roomId']!),
+                ),
+                GoRoute(path: 'new', builder: (_, __) => const NewChatScreen()),
+                GoRoute(path: 'settings', builder: (_, __) => const SettingsScreen()),
+              ],
             ),
-            GoRoute(path: 'new', builder: (_, __) => const NewChatScreen()),
-            GoRoute(path: 'settings', builder: (_, __) => const SettingsScreen()),
           ],
         ),
       ],
     );
-
-// Kept for import compatibility — unused after refactor
-final appRouter = GoRouter(initialLocation: '/login', routes: [
-  GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-]);

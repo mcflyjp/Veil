@@ -480,27 +480,32 @@ class _ChatTitleBar extends StatelessWidget {
   const _ChatTitleBar({required this.title, required this.isDark, required this.onBack, this.onTimer});
 
   @override
-  Widget build(BuildContext context) => Container(
-    height: 28,
-    decoration: BoxDecoration(gradient: LinearGradient(colors: isDark
-        ? [AimColors.darkTitleBar, const Color(0xFF1A3A6A)]
-        : [AimColors.titleBarStart, AimColors.titleBarEnd])),
-    padding: const EdgeInsets.symmetric(horizontal: 4),
-    child: Row(children: [
-      InkWell(onTap: onBack,
-        child: const Padding(padding: EdgeInsets.all(4),
-          child: Icon(Icons.arrow_back, color: Colors.white, size: 14))),
-      const Icon(Icons.lock, color: Colors.white, size: 12),
-      const SizedBox(width: 4),
-      Expanded(child: Text('Veil — $title',
-        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-        overflow: TextOverflow.ellipsis)),
-      if (onTimer != null)
-        InkWell(onTap: onTimer,
-          child: const Padding(padding: EdgeInsets.all(4),
-            child: Icon(Icons.timer_outlined, color: Colors.white, size: 14))),
-    ]),
-  );
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.of(context).size.width >= 700;
+    return Container(
+      height: 28,
+      decoration: BoxDecoration(gradient: LinearGradient(colors: isDark
+          ? [AimColors.darkTitleBar, const Color(0xFF1A3A6A)]
+          : [AimColors.titleBarStart, AimColors.titleBarEnd])),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(children: [
+        // Hide back button on wide layout — buddy list is always visible
+        if (!isWide)
+          InkWell(onTap: onBack,
+            child: const Padding(padding: EdgeInsets.all(4),
+              child: Icon(Icons.arrow_back, color: Colors.white, size: 14))),
+        const Icon(Icons.lock, color: Colors.white, size: 12),
+        const SizedBox(width: 4),
+        Expanded(child: Text('Veil — $title',
+          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+          overflow: TextOverflow.ellipsis)),
+        if (onTimer != null)
+          InkWell(onTap: onTimer,
+            child: const Padding(padding: EdgeInsets.all(4),
+              child: Icon(Icons.timer_outlined, color: Colors.white, size: 14))),
+      ]),
+    );
+  }
 }
 
 class _BarBtn extends StatelessWidget {

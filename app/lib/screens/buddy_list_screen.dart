@@ -9,6 +9,7 @@ import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
 import '../core/conversation_prefs.dart';
 
+/// Pure column — no Scaffold. SplitShell provides the Scaffold wrapping.
 class BuddyListScreen extends StatefulWidget {
   const BuddyListScreen({super.key});
   @override
@@ -85,9 +86,8 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
     final rooms = mgr.rooms;
     final screenName = mgr.myScreenName;
 
-    return Scaffold(
-      body: Column(
-        children: [
+    return Column(
+      children: [
           // ── AIM-style title bar ──────────────────────────────────────
           _AimTitleBar(title: 'Buddy List', isDark: isDark, actions: [
             _TitleBarButton(icon: Icons.settings, tooltip: 'Settings',
@@ -155,7 +155,6 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
             ]),
           ),
         ],
-      ),
     );
   }
 }
