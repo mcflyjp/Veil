@@ -36,7 +36,15 @@ class ClientManager extends ChangeNotifier {
     );
 
     _client.onLoginStateChanged.stream.listen((_) => notifyListeners());
-    _client.onSync.stream.listen((_) => notifyListeners());
+    _client.onSync.stream.listen((_) async {
+      // Auto-accept all pending invites so DMs appear instantly on both sides.
+      for (final room in _client.rooms) {
+        if (room.membership == Membership.invite) {
+          try { await room.join(); } catch (_) {}
+        }
+      }
+      notifyListeners();
+    });
 
     _isReady = true;
     notifyListeners();
@@ -53,15 +61,12 @@ class ClientManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Matrix registration requires a two-step UIA handshake.
-  /// We handle it with raw HTTP so the SDK's init() lifecycle is not affected,
-  /// then log in via the SDK to get a proper session.
+  /// Two-step Matrix UIA registration via raw HTTP, then SDK login.
   Future<void> register(String username, String password, String? displayName) async {
     await _client.checkHomeserver(Uri.parse(kHomeserver));
 
     final uri = Uri.parse('$kHomeserver/_matrix/client/v3/register');
 
-    // Step 1 — trigger the UIA challenge and get the session token.
     final resp1 = await http.post(
       uri,
       headers: {'Content-Type': 'application/json'},
@@ -70,7 +75,6 @@ class ClientManager extends ChangeNotifier {
     final body1 = jsonDecode(resp1.body) as Map<String, Object?>;
 
     if (resp1.statusCode == 200) {
-      // Unlikely: server accepted without UIA — still need a login call.
       await _doLogin(username, password, displayName);
       return;
     }
@@ -82,7 +86,6 @@ class ClientManager extends ChangeNotifier {
       );
     }
 
-    // Step 2 — complete the m.login.dummy stage.
     final resp2 = await http.post(
       uri,
       headers: {'Content-Type': 'application/json'},
@@ -101,7 +104,6 @@ class ClientManager extends ChangeNotifier {
       );
     }
 
-    // Account created — log in via SDK to initialise encryption and sync.
     await _doLogin(username, password, displayName);
   }
 
@@ -127,7 +129,9 @@ class ClientManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<Room> get rooms => _client.rooms;
+  List<Room> get rooms => _client.rooms
+      .where((r) => r.membership == Membership.join)
+      .toList();
 
   Room? roomById(String id) {
     try {
