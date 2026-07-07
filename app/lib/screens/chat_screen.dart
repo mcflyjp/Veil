@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
+import '../core/notification_service.dart';
 import '../widgets/disappearing_timer_dialog.dart';
 
 // Available AIM-era fonts
@@ -42,8 +43,18 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    NotificationService.instance.activeRoomId = Uri.decodeComponent(widget.roomId);
     _loadPrefs();
     _loadTimeline();
+  }
+
+  @override
+  void dispose() {
+    NotificationService.instance.activeRoomId = null;
+    _timeline?.cancelSubscriptions();
+    _inputCtrl.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPrefs() async {
@@ -66,14 +77,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final timeline = await room.getTimeline(onUpdate: () => setState(() {}));
     setState(() { _timeline = timeline; _loadingTimeline = false; });
     await timeline.requestHistory(historyCount: 50);
-  }
-
-  @override
-  void dispose() {
-    _inputCtrl.dispose();
-    _scrollCtrl.dispose();
-    _timeline?.cancelSubscriptions();
-    super.dispose();
   }
 
   Future<void> _sendText() async {

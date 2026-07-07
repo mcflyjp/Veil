@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'core/client_manager.dart';
+import 'core/notification_service.dart';
 import 'core/router.dart';
 import 'core/aim_theme.dart';
 import 'core/veil_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.instance.init();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -55,9 +57,24 @@ void main() async {
   );
 }
 
-class VeilApp extends StatelessWidget {
+class VeilApp extends StatefulWidget {
   final ClientManager clientManager;
   const VeilApp({super.key, required this.clientManager});
+  @override
+  State<VeilApp> createState() => _VeilAppState();
+}
+
+class _VeilAppState extends State<VeilApp> {
+  late final _router = buildRouter(widget.clientManager);
+
+  @override
+  void initState() {
+    super.initState();
+    // Route notification taps to the correct chat screen.
+    NotificationService.instance.onTap = (roomId) {
+      _router.go('/buddylist/chat/${Uri.encodeComponent(roomId)}');
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +84,7 @@ class VeilApp extends StatelessWidget {
       theme: AimTheme.light,
       darkTheme: AimTheme.dark,
       themeMode: themeNotifier.mode,
-      routerConfig: buildRouter(clientManager),
+      routerConfig: _router,
       debugShowCheckedModeBanner: false,
     );
   }

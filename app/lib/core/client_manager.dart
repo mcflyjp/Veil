@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:matrix/matrix.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart' as sqflite;
+import 'notification_service.dart';
 
 const kHomeserver = 'https://matrix.veilmsg.com';
 
@@ -44,6 +45,25 @@ class ClientManager extends ChangeNotifier {
         }
       }
       notifyListeners();
+    });
+
+    // Fire a local notification for every incoming message not from ourselves.
+    _client.onEvent.stream.listen((update) async {
+      if (update.type != EventUpdateType.timeline) return;
+      final raw = update.content;
+      if (raw['type'] != 'm.room.message') return;
+      if (raw['sender'] == _client.userID) return;
+
+      final sender = (raw['sender'] as String?)
+              ?.split(':').first.replaceFirst('@', '') ??
+          'Unknown';
+      final body = (raw['content'] as Map?)?['body'] as String? ?? 'New message';
+
+      await NotificationService.instance.showMessage(
+        roomId: update.roomID,
+        senderName: sender,
+        body: body,
+      );
     });
 
     _isReady = true;
