@@ -189,7 +189,7 @@ class _TitleBar extends StatelessWidget {
           const Text('Veil',
               style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
           Text(screenName,
-              style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 13),
+              style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 16),
               overflow: TextOverflow.ellipsis),
         ])),
         // Theme cycle button
@@ -269,7 +269,7 @@ class _SectionHeader extends StatelessWidget {
     child: Row(children: [
       const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
       Text('Conversations ($count)',
-          style: TextStyle(color: tc.sectionText, fontSize: 13, fontWeight: FontWeight.bold)),
+          style: TextStyle(color: tc.sectionText, fontSize: 16, fontWeight: FontWeight.bold)),
     ]),
   );
 }
@@ -377,21 +377,21 @@ class _BuddyRow extends StatelessWidget {
             ])),
             if (last != null)
               Text(timeago.format(last.originServerTs, allowFromNow: true),
-                  style: TextStyle(fontSize: 12, color: tc.timestampText)),
+                  style: TextStyle(fontSize: 14, color: tc.timestampText)),
             if (unread) ...[
               const SizedBox(width: 6),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: tc.badgeBg, borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: tc.badgeBg, borderRadius: BorderRadius.circular(12)),
                 child: Text('${room.notificationCount}',
-                    style: TextStyle(color: tc.badgeText, fontSize: 11, fontWeight: FontWeight.bold)),
+                    style: TextStyle(color: tc.badgeText, fontSize: 13, fontWeight: FontWeight.bold)),
               ),
             ],
           ]),
           const SizedBox(height: 2),
           if (last != null)
             Text(last.body ?? '',
-              style: TextStyle(fontSize: 13, color: tc.previewText,
+              style: TextStyle(fontSize: 16, color: tc.previewText,
                   fontWeight: unread ? FontWeight.bold : FontWeight.normal),
               overflow: TextOverflow.ellipsis, maxLines: 1),
         ])),
@@ -524,7 +524,7 @@ class _ToolbarBtn extends StatelessWidget {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 26, color: tc.toolbarText),
         const SizedBox(height: 3),
-        Text(label, style: TextStyle(fontSize: 13, color: tc.toolbarText)),
+        Text(label, style: TextStyle(fontSize: 16, color: tc.toolbarText)),
       ]),
     ),
   );
@@ -630,7 +630,7 @@ class _ConvContextMenuState extends State<_ConvContextMenu> {
           final (secs, label) = o;
           return RadioListTile<int>(
             value: secs, groupValue: _disappearing,
-            title: Text(label, style: const TextStyle(fontSize: 15)),
+            title: Text(label, style: const TextStyle(fontSize: 16)),
             onChanged: (v) async {
               if (v == null) return;
               await widget.prefs.setDisappearing(v);
@@ -656,7 +656,7 @@ class _ConvContextMenuState extends State<_ConvContextMenu> {
               Container(width: 18, height: 18,
                 decoration: BoxDecoration(color: e.value.chatBg, border: Border.all(color: Colors.grey))),
               const SizedBox(width: 8),
-              Text(e.value.label, style: const TextStyle(fontSize: 15)),
+              Text(e.value.label, style: const TextStyle(fontSize: 16)),
             ]),
             onChanged: (v) async {
               if (v == null) return;
@@ -692,7 +692,7 @@ class _MenuTile extends StatelessWidget {
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(label, style: TextStyle(fontSize: 16, color: textColor, fontWeight: FontWeight.w500)),
           if (subtitle != null)
-            Text(subtitle!, style: TextStyle(fontSize: 13, color: textColor.withAlpha(153))),
+            Text(subtitle!, style: TextStyle(fontSize: 16, color: textColor.withAlpha(153))),
         ])),
       ]),
     ),

@@ -11,9 +11,9 @@ import '../widgets/disappearing_timer_dialog.dart';
 
 // Available AIM-era fonts
 const _kFonts = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Comic Sans MS', 'Georgia'];
-const _kSizes = [11.0, 12.0, 13.0, 14.0, 16.0, 18.0, 20.0];
+const _kSizes = [14.0, 16.0, 18.0, 20.0, 22.0, 24.0];
 const _kDefaultFont = 'Arial';
-const _kDefaultSize = 14.0;
+const _kDefaultSize = 16.0;
 
 class ChatScreen extends StatefulWidget {
   final String roomId;
@@ -170,7 +170,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : msgEvents.isEmpty
                     ? Center(child: Text('No messages yet. Say something!',
-                        style: TextStyle(fontSize: 11,
+                        style: TextStyle(fontSize: 16,
                           color: isDark ? Colors.grey[500] : Colors.grey[600])))
                     : ListView.builder(
                         controller: _scrollCtrl,
@@ -216,12 +216,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Text('A', style: TextStyle(
-                    fontFamily: _fontFamily, fontSize: 13,
+                    fontFamily: _fontFamily, fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: isDark ? AimColors.darkText : Colors.black)),
                   const SizedBox(width: 4),
                   Text('$_fontFamily · ${_fontSize.toInt()}pt',
-                    style: TextStyle(fontSize: 9,
+                    style: TextStyle(fontSize: 14,
                       color: isDark ? Colors.grey[400] : Colors.grey[600])),
                 ]),
               ),
@@ -270,7 +270,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: _sending
                     ? const SizedBox(width: 12, height: 12,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Send', style: TextStyle(fontSize: 12)),
+                    : const Text('Send', style: TextStyle(fontSize: 16)),
               ),
             ),
           ]),
@@ -311,12 +311,12 @@ class _FontPickerDialogState extends State<_FontPickerDialog> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return AlertDialog(
-      title: const Text('Font Settings', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+      title: const Text('Font Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
       contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       content: SizedBox(
-        width: 280,
+        width: 300,
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Font', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+          const Text('Font', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
           Container(
             decoration: BoxDecoration(
@@ -326,27 +326,27 @@ class _FontPickerDialogState extends State<_FontPickerDialog> {
                 value: _family,
                 isExpanded: true,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                style: TextStyle(fontSize: 12, color: isDark ? AimColors.darkText : Colors.black),
+                style: TextStyle(fontSize: 16, color: isDark ? AimColors.darkText : Colors.black),
                 dropdownColor: isDark ? AimColors.darkInputBg : Colors.white,
                 items: _kFonts.map((f) => DropdownMenuItem(
                   value: f,
-                  child: Text(f, style: TextStyle(fontFamily: f, fontSize: 12)),
+                  child: Text(f, style: TextStyle(fontFamily: f, fontSize: 16)),
                 )).toList(),
                 onChanged: (v) => setState(() => _family = v!),
               ),
             ),
           ),
           const SizedBox(height: 12),
-          const Text('Size', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+          const Text('Size', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
           Wrap(
-            spacing: 6, runSpacing: 6,
+            spacing: 8, runSpacing: 8,
             children: _kSizes.map((s) {
               final selected = s == _size;
               return GestureDetector(
                 onTap: () => setState(() => _size = s),
                 child: Container(
-                  width: 36, height: 28,
+                  width: 44, height: 36,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: selected
@@ -358,7 +358,7 @@ class _FontPickerDialogState extends State<_FontPickerDialog> {
                           : (isDark ? AimColors.darkBorder : AimColors.winBorder)),
                   ),
                   child: Text('${s.toInt()}',
-                    style: TextStyle(fontSize: 11,
+                    style: TextStyle(fontSize: 14,
                       color: selected ? Colors.white : (isDark ? AimColors.darkText : Colors.black),
                       fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
                 ),

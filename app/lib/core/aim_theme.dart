@@ -77,7 +77,7 @@ class AimTheme {
       backgroundColor: AimColors.titleBarStart,
       foregroundColor: Colors.white,
       elevation: 1,
-      titleTextStyle: TextStyle(fontFamily: 'Arial', fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+      titleTextStyle: TextStyle(fontFamily: 'Arial', fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
     ),
     cardTheme: const CardThemeData(
       color: AimColors.buddyRowBg,
@@ -118,8 +118,9 @@ class AimTheme {
       ),
     ),
     textTheme: const TextTheme(
-      bodyMedium: TextStyle(fontFamily: 'Arial', fontSize: 12, color: Colors.black),
-      bodySmall:  TextStyle(fontFamily: 'Arial', fontSize: 11, color: Colors.black),
+      bodyLarge:  TextStyle(fontFamily: 'Arial', fontSize: 18, color: Colors.black),
+      bodyMedium: TextStyle(fontFamily: 'Arial', fontSize: 16, color: Colors.black),
+      bodySmall:  TextStyle(fontFamily: 'Arial', fontSize: 14, color: Colors.black),
     ),
     dividerColor: AimColors.winBorder,
   );
@@ -139,7 +140,7 @@ class AimTheme {
       backgroundColor: AimColors.darkTitleBar,
       foregroundColor: Colors.white,
       elevation: 1,
-      titleTextStyle: TextStyle(fontFamily: 'Arial', fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+      titleTextStyle: TextStyle(fontFamily: 'Arial', fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
     ),
     cardTheme: const CardThemeData(
       color: AimColors.darkChatBg,
@@ -176,8 +177,9 @@ class AimTheme {
       ),
     ),
     textTheme: const TextTheme(
-      bodyMedium: TextStyle(fontFamily: 'Arial', fontSize: 12, color: AimColors.darkText),
-      bodySmall:  TextStyle(fontFamily: 'Arial', fontSize: 11, color: AimColors.darkText),
+      bodyLarge:  TextStyle(fontFamily: 'Arial', fontSize: 18, color: AimColors.darkText),
+      bodyMedium: TextStyle(fontFamily: 'Arial', fontSize: 16, color: AimColors.darkText),
+      bodySmall:  TextStyle(fontFamily: 'Arial', fontSize: 14, color: AimColors.darkText),
     ),
     dividerColor: AimColors.darkBorder,
   );

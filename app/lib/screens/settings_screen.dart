@@ -21,12 +21,12 @@ class SettingsScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(48),
+        preferredSize: const Size.fromHeight(56),
         child: AimTitleBar(
           title: 'Preferences',
           isDark: isDark,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, size: 14, color: Colors.white),
+            icon: const Icon(Icons.arrow_back, size: 20, color: Colors.white),
             onPressed: () => context.pop(),
           ),
         ),
@@ -42,62 +42,60 @@ class SettingsScreen extends StatelessWidget {
           _SettingsTile(label: 'Server', value: 'veilmsg.com'),
           _SectionHeader('Appearance'),
           SwitchListTile(
-            dense: true,
-            title: const Text('Dark Mode', style: TextStyle(fontFamily: 'Arial', fontSize: 12)),
+            title: const Text('Dark Mode', style: TextStyle(fontFamily: 'Arial', fontSize: 16)),
             value: isDark,
             onChanged: (_) => themeNotifier.toggle(),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-            child: Text('App Theme', style: TextStyle(fontFamily: 'Arial', fontSize: 11, color: Colors.grey.shade600)),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text('App Theme', style: TextStyle(fontFamily: 'Arial', fontSize: 16, color: Colors.grey.shade600)),
           ),
           ...VeilThemeMode.values.map((m) {
             final tc = VeilThemeColors.forMode(m);
             final selected = veilTheme.mode == m;
             return ListTile(
-              dense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               leading: Row(mainAxisSize: MainAxisSize.min, children: [
-                _ThemeSwatch(color: tc.scaffold, size: 18),
-                const SizedBox(width: 3),
-                _ThemeSwatch(color: tc.titleStart, size: 18),
-                const SizedBox(width: 3),
-                _ThemeSwatch(color: tc.badgeBg, size: 18),
+                _ThemeSwatch(color: tc.scaffold, size: 22),
+                const SizedBox(width: 4),
+                _ThemeSwatch(color: tc.titleStart, size: 22),
+                const SizedBox(width: 4),
+                _ThemeSwatch(color: tc.badgeBg, size: 22),
               ]),
               title: Text(m.label,
-                  style: TextStyle(fontFamily: 'Arial', fontSize: 13,
+                  style: TextStyle(fontFamily: 'Arial', fontSize: 16,
                       fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
               trailing: selected
-                  ? Icon(Icons.check_circle, color: tc.badgeBg, size: 18)
+                  ? Icon(Icons.check_circle, color: tc.badgeBg, size: 22)
                   : null,
               onTap: () => veilTheme.setMode(m),
             );
           }),
           _SectionHeader('Privacy'),
           ListTile(
-            dense: true,
-            title: const Text('End-to-end encryption', style: TextStyle(fontFamily: 'Arial', fontSize: 12)),
+            title: const Text('End-to-end encryption', style: TextStyle(fontFamily: 'Arial', fontSize: 16)),
             trailing: const Chip(
-              label: Text('Enabled', style: TextStyle(fontSize: 10, fontFamily: 'Arial', color: Colors.white)),
+              label: Text('Enabled', style: TextStyle(fontSize: 14, fontFamily: 'Arial', color: Colors.white)),
               backgroundColor: AimColors.aimOnline,
               padding: EdgeInsets.zero,
-              labelPadding: EdgeInsets.symmetric(horizontal: 6),
+              labelPadding: EdgeInsets.symmetric(horizontal: 8),
             ),
           ),
           _SectionHeader('Account'),
           ListTile(
-            dense: true,
-            title: const Text('Sign out', style: TextStyle(fontFamily: 'Arial', fontSize: 12, color: Colors.red)),
-            leading: const Icon(Icons.logout, size: 16, color: Colors.red),
+            title: const Text('Sign out', style: TextStyle(fontFamily: 'Arial', fontSize: 16, color: Colors.red)),
+            leading: const Icon(Icons.logout, size: 22, color: Colors.red),
             onTap: () async {
               final confirm = await showDialog<bool>(
                 context: context,
                 builder: (ctx) => AlertDialog(
-                  title: const Text('Sign out?', style: TextStyle(fontFamily: 'Arial', fontSize: 14)),
-                  content: const Text('You will be signed out of Veil on this device.', style: TextStyle(fontFamily: 'Arial', fontSize: 12)),
+                  title: const Text('Sign out?', style: TextStyle(fontFamily: 'Arial', fontSize: 18)),
+                  content: const Text('You will be signed out of Veil on this device.', style: TextStyle(fontFamily: 'Arial', fontSize: 16)),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                    ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sign Out')),
+                    TextButton(onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancel', style: TextStyle(fontSize: 16))),
+                    ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Sign Out', style: TextStyle(fontSize: 16))),
                   ],
                 ),
               );
@@ -122,8 +120,8 @@ class _SectionHeader extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       color: isDark ? AimColors.darkSurface2 : AimColors.aimLightBlue,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Text(text, style: const TextStyle(fontFamily: 'Arial', fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Text(text, style: const TextStyle(fontFamily: 'Arial', fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
     );
   }
 }
@@ -136,9 +134,8 @@ class _SettingsTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      dense: true,
-      title: Text(label, style: const TextStyle(fontFamily: 'Arial', fontSize: 11, color: Colors.grey)),
-      subtitle: Text(value, style: const TextStyle(fontFamily: 'Arial', fontSize: 12)),
+      title: Text(label, style: const TextStyle(fontFamily: 'Arial', fontSize: 14, color: Colors.grey)),
+      subtitle: Text(value, style: const TextStyle(fontFamily: 'Arial', fontSize: 16)),
     );
   }
 }
