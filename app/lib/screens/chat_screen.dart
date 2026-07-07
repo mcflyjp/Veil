@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:matrix/matrix.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
+import '../core/disappearing_message_service.dart';
 import '../core/notification_service.dart';
 import '../widgets/disappearing_timer_dialog.dart';
 
@@ -120,6 +122,91 @@ class _ChatScreenState extends State<ChatScreen> {
     await room.client.setRoomStateWithKey(room.id, 'm.room.message_retention', '', content);
   }
 
+  Future<void> _showMessageMenu(BuildContext ctx, Event event) async {
+    final room = _room;
+    if (room == null) return;
+    final isDark = Theme.of(ctx).brightness == Brightness.dark;
+    final isText = event.messageType == MessageTypes.Text;
+
+    await showModalBottomSheet(
+      context: ctx,
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (isText)
+            _MsgMenuTile(
+              icon: Icons.copy,
+              label: 'Copy text',
+              onTap: () {
+                Navigator.pop(ctx);
+                Clipboard.setData(ClipboardData(text: event.body));
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)));
+              },
+            ),
+          _MsgMenuTile(
+            icon: Icons.timer_outlined,
+            label: 'Disappear in…',
+            onTap: () async {
+              Navigator.pop(ctx);
+              await _pickDisappearTimer(ctx, event, room);
+            },
+          ),
+          _MsgMenuTile(
+            icon: Icons.delete_outline,
+            label: 'Delete for everyone',
+            color: Colors.red,
+            onTap: () async {
+              Navigator.pop(ctx);
+              try { await room.redactEvent(event.eventId); } catch (_) {}
+            },
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _pickDisappearTimer(BuildContext ctx, Event event, Room room) async {
+    const options = [
+      (30, '30 seconds'),
+      (60, '1 minute'),
+      (300, '5 minutes'),
+      (1800, '30 minutes'),
+      (3600, '1 hour'),
+      (86400, '24 hours'),
+      (604800, '7 days'),
+    ];
+
+    final picked = await showDialog<int>(
+      context: ctx,
+      builder: (dialogCtx) => SimpleDialog(
+        title: const Text('Disappear in…', style: TextStyle(fontSize: 18)),
+        children: options.map((o) {
+          final (secs, label) = o;
+          return SimpleDialogOption(
+            onPressed: () => Navigator.pop(dialogCtx, secs),
+            child: Text(label, style: const TextStyle(fontSize: 16)),
+          );
+        }).toList(),
+      ),
+    );
+
+    if (picked == null) return;
+    await DisappearingMessageService.instance.schedule(
+      eventId: event.eventId,
+      roomId: room.id,
+      after: Duration(seconds: picked),
+      client: room.client,
+    );
+    if (ctx.mounted) {
+      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+        content: Text('Message will disappear in ${options.firstWhere((o) => o.$1 == picked).$2}'),
+        duration: const Duration(seconds: 2),
+      ));
+    }
+  }
+
   void _openFontPicker() {
     showDialog(
       context: context,
@@ -183,9 +270,12 @@ class _ChatScreenState extends State<ChatScreen> {
                         itemBuilder: (_, i) {
                           final event = msgEvents[i];
                           final isMe = event.senderId == myId;
-                          return _AimMessageLine(
-                            event: event, isMe: isMe, isDark: isDark,
-                            fontFamily: _fontFamily, fontSize: _fontSize,
+                          return GestureDetector(
+                            onLongPress: () => _showMessageMenu(context, event),
+                            child: _AimMessageLine(
+                              event: event, isMe: isMe, isDark: isDark,
+                              fontFamily: _fontFamily, fontSize: _fontSize,
+                            ),
                           );
                         },
                       ),
@@ -507,6 +597,30 @@ class _ChatTitleBar extends StatelessWidget {
             child: const Padding(padding: EdgeInsets.all(4),
               child: Icon(Icons.timer_outlined, color: Colors.white, size: 14))),
       ]),
+    );
+  }
+}
+
+class _MsgMenuTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color? color;
+  final VoidCallback onTap;
+  const _MsgMenuTile({required this.icon, required this.label, required this.onTap, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? (Theme.of(context).brightness == Brightness.dark ? AimColors.darkText : Colors.black87);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(children: [
+          Icon(icon, size: 24, color: c),
+          const SizedBox(width: 16),
+          Text(label, style: TextStyle(fontSize: 16, color: c)),
+        ]),
+      ),
     );
   }
 }

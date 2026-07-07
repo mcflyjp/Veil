@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:matrix/matrix.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart' as sqflite;
+import 'disappearing_message_service.dart';
 import 'notification_service.dart';
 
 const kHomeserver = 'https://matrix.veilmsg.com';
@@ -63,6 +64,28 @@ class ClientManager extends ChangeNotifier {
         roomId: update.roomID,
         senderName: sender,
         body: body,
+      );
+    });
+
+    // Reload any persisted per-message disappear timers.
+    await DisappearingMessageService.instance.loadAndReschedule(_client);
+
+    // Auto-schedule disappearing for incoming messages that carry veil_expire_at.
+    _client.onEvent.stream.listen((update) async {
+      if (update.type != EventUpdateType.timeline) return;
+      final raw = update.content;
+      if (raw['type'] != 'm.room.message') return;
+      final expireAt = (raw['content'] as Map?)?['veil_expire_at'] as int?;
+      if (expireAt == null) return;
+      final remaining = expireAt - DateTime.now().millisecondsSinceEpoch;
+      if (remaining <= 0) return;
+      final eventId = raw['event_id'] as String?;
+      if (eventId == null) return;
+      await DisappearingMessageService.instance.schedule(
+        eventId: eventId,
+        roomId: update.roomID,
+        after: Duration(milliseconds: remaining),
+        client: _client,
       );
     });
 
