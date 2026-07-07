@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'core/client_manager.dart';
 import 'core/router.dart';
 import 'core/aim_theme.dart';
+import 'core/veil_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,6 +42,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider.value(value: clientManager),
         ChangeNotifierProvider(create: (_) => ThemeModeNotifier()),
+        ChangeNotifierProvider(create: (_) => VeilThemeNotifier()),
       ],
       child: VeilApp(clientManager: clientManager),
     ),

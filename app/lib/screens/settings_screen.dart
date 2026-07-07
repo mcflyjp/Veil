@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
+import '../core/veil_theme.dart';
 import '../main.dart';
 import '../widgets/aim_title_bar.dart';
 
@@ -13,6 +14,7 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final mgr = context.watch<ClientManager>();
     final themeNotifier = context.watch<ThemeModeNotifier>();
+    final veilTheme = context.watch<VeilThemeNotifier>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final me = mgr.client.userID ?? '';
     final displayName = mgr.myScreenName;
@@ -45,6 +47,32 @@ class SettingsScreen extends StatelessWidget {
             value: isDark,
             onChanged: (_) => themeNotifier.toggle(),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+            child: Text('App Theme', style: TextStyle(fontFamily: 'Arial', fontSize: 11, color: Colors.grey.shade600)),
+          ),
+          ...VeilThemeMode.values.map((m) {
+            final tc = VeilThemeColors.forMode(m);
+            final selected = veilTheme.mode == m;
+            return ListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              leading: Row(mainAxisSize: MainAxisSize.min, children: [
+                _ThemeSwatch(color: tc.scaffold, size: 18),
+                const SizedBox(width: 3),
+                _ThemeSwatch(color: tc.titleStart, size: 18),
+                const SizedBox(width: 3),
+                _ThemeSwatch(color: tc.badgeBg, size: 18),
+              ]),
+              title: Text(m.label,
+                  style: TextStyle(fontFamily: 'Arial', fontSize: 13,
+                      fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
+              trailing: selected
+                  ? Icon(Icons.check_circle, color: tc.badgeBg, size: 18)
+                  : null,
+              onTap: () => veilTheme.setMode(m),
+            );
+          }),
           _SectionHeader('Privacy'),
           ListTile(
             dense: true,
@@ -113,4 +141,20 @@ class _SettingsTile extends StatelessWidget {
       subtitle: Text(value, style: const TextStyle(fontFamily: 'Arial', fontSize: 12)),
     );
   }
+}
+
+class _ThemeSwatch extends StatelessWidget {
+  final Color color;
+  final double size;
+  const _ThemeSwatch({required this.color, required this.size});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size, height: size,
+    decoration: BoxDecoration(
+      color: color,
+      border: Border.all(color: Colors.grey.shade400, width: 0.5),
+      borderRadius: BorderRadius.circular(4),
+    ),
+  );
 }

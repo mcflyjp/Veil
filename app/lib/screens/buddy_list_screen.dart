@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:go_router/go_router.dart';
@@ -8,8 +9,8 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
 import '../core/conversation_prefs.dart';
+import '../core/veil_theme.dart';
 
-/// Pure column — no Scaffold. SplitShell provides the Scaffold wrapping.
 class BuddyListScreen extends StatefulWidget {
   const BuddyListScreen({super.key});
   @override
@@ -17,7 +18,6 @@ class BuddyListScreen extends StatefulWidget {
 }
 
 class _BuddyListScreenState extends State<BuddyListScreen> {
-  // roomId → muted state (in-memory cache so rows rebuild instantly)
   final Map<String, bool> _mutedCache = {};
 
   Future<bool> _getMuted(String roomId) async {
@@ -34,19 +34,20 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
     setState(() => _mutedCache[roomId] = v);
   }
 
-  Future<void> _confirmDelete(BuildContext ctx, Room room) async {
+  Future<void> _confirmDelete(BuildContext ctx, Room room, VeilThemeColors tc) async {
     final confirmed = await showDialog<bool>(
       context: ctx,
       builder: (_) => AlertDialog(
-        backgroundColor: AimColors.buddyListBg,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: const Text('Delete conversation?',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        content: Text('This will leave the conversation with ${room.getLocalizedDisplayname()} and remove it from your list.',
-            style: const TextStyle(fontSize: 14)),
+        backgroundColor: tc.rowBg == Colors.transparent ? const Color(0xFF1A1A30) : tc.rowBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(tc.rowRadius)),
+        title: Text('Delete conversation?',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: tc.nameText)),
+        content: Text(
+            'This will leave the conversation with ${room.getLocalizedDisplayname()} and remove it from your list.',
+            style: TextStyle(fontSize: 14, color: tc.previewText)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel', style: TextStyle(fontSize: 14))),
+              child: Text('Cancel', style: TextStyle(fontSize: 14, color: tc.toolbarActive))),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete', style: TextStyle(fontSize: 14, color: Colors.red)),
@@ -63,17 +64,17 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
   void _showContextMenu(BuildContext ctx, Room room) async {
     final prefs = await ConversationPrefs.load(room.id);
     if (!ctx.mounted) return;
-    final isDark = Theme.of(ctx).brightness == Brightness.dark;
+    final tc = ctx.read<VeilThemeNotifier>().colors;
 
     await showModalBottomSheet(
       context: ctx,
-      backgroundColor: isDark ? AimColors.darkBuddyBg : AimColors.buddyListBg,
+      backgroundColor: tc.useGlass ? const Color(0xFF0F0F2A) : tc.scaffold,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       builder: (_) => _ConvContextMenu(
-        room: room,
-        prefs: prefs,
+        room: room, prefs: prefs,
+        tc: tc,
         onMuteToggle: (v) => _setMuted(room.id, v),
-        onDelete: () => _confirmDelete(ctx, room),
+        onDelete: () => _confirmDelete(ctx, room, tc),
         onRefresh: () => setState(() {}),
       ),
     );
@@ -82,95 +83,463 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
   @override
   Widget build(BuildContext context) {
     final mgr = context.watch<ClientManager>();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tc  = context.watch<VeilThemeNotifier>().colors;
+    final vtn = context.read<VeilThemeNotifier>();
     final rooms = mgr.rooms;
     final screenName = mgr.myScreenName;
 
-    return Column(
+    Widget content = Column(
       children: [
-          // ── AIM-style title bar ──────────────────────────────────────
-          _AimTitleBar(title: 'Buddy List', isDark: isDark, actions: [
-            _TitleBarButton(icon: Icons.settings, tooltip: 'Settings',
-                onTap: () => context.go('/buddylist/settings')),
-          ]),
+        // ── Title bar ───────────────────────────────────────────────
+        _TitleBar(tc: tc, vtn: vtn, screenName: screenName, onNew: () => context.go('/buddylist/new')),
 
-          // ── Screen name + status strip ───────────────────────────────
-          Container(
-            color: isDark ? AimColors.darkSectionBg : AimColors.titleBarStart,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(children: [
-              _PresenceDot(online: true),
-              const SizedBox(width: 8),
-              Expanded(child: Text(screenName,
-                style: const TextStyle(color: Colors.white, fontSize: 16,
-                    fontWeight: FontWeight.bold),
-                overflow: TextOverflow.ellipsis)),
-              InkWell(
-                onTap: () => context.go('/buddylist/new'),
-                child: const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: Icon(Icons.edit_note, color: Colors.white, size: 26),
-                ),
-              ),
-            ]),
-          ),
+        // ── Buddy list body ─────────────────────────────────────────
+        Expanded(
+          child: _buildList(context, tc, rooms),
+        ),
 
-          // ── Buddy list body ─────────────────────────────────────────
-          Expanded(
-            child: Container(
-              color: isDark ? AimColors.darkBuddyBg : AimColors.buddyListBg,
-              child: rooms.isEmpty
-                  ? _EmptyState(onNew: () => context.go('/buddylist/new'))
-                  : ListView(children: [
-                      _SectionHeader('Conversations (${rooms.length})', isDark: isDark),
-                      ...rooms.map((r) => _BuddyRow(
-                        room: r,
-                        isDark: isDark,
-                        muted: _mutedCache[r.id] ?? false,
-                        onDelete: () => _confirmDelete(context, r),
-                        onMuteToggle: () => _getMuted(r.id).then((cur) => _setMuted(r.id, !cur)),
-                        onLongPress: () => _showContextMenu(context, r),
-                      )),
-                    ]),
-            ),
-          ),
+        // ── Bottom toolbar ──────────────────────────────────────────
+        _BottomToolbar(
+          tc: tc,
+          onIM: () => context.go('/buddylist/new'),
+          onSettings: () => context.go('/buddylist/settings'),
+          onSignOff: () => context.read<ClientManager>().logout(),
+        ),
+      ],
+    );
 
-          // ── Bottom toolbar ──────────────────────────────────────────
-          Container(
-            height: 60,
-            color: isDark ? const Color(0xFF111111) : AimColors.buddyListBg,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(
-                  color: isDark ? AimColors.darkBorder : AimColors.winBorder)),
-            ),
-            child: Row(children: [
-              _ToolbarButton(icon: Icons.message, label: 'IM',
-                  onTap: () => context.go('/buddylist/new')),
-              _ToolbarButton(icon: Icons.people, label: 'Chat',
-                  onTap: () => context.go('/buddylist/new')),
-              const Spacer(),
-              _ToolbarButton(icon: Icons.logout, label: 'Sign Off',
-                  onTap: () => context.read<ClientManager>().logout()),
-            ]),
-          ),
+    // Glass theme: stack glow orb behind content
+    if (tc.showGlow) {
+      content = Stack(children: [
+        Positioned(top: 40, left: -80,
+          child: _GlowOrb(color: tc.glowColor, size: 360)),
+        Positioned(bottom: 100, right: -60,
+          child: _GlowOrb(color: tc.glowColor.withAlpha(100), size: 260)),
+        content,
+      ]);
+    }
+
+    return ColoredBox(color: tc.scaffold, child: content);
+  }
+
+  Widget _buildList(BuildContext context, VeilThemeColors tc, List<Room> rooms) {
+    if (rooms.isEmpty) {
+      return ColoredBox(
+        color: tc.listBg,
+        child: _EmptyState(tc: tc, onNew: () => context.go('/buddylist/new')),
+      );
+    }
+
+    return ColoredBox(
+      color: tc.listBg,
+      child: ListView(
+        padding: tc.roundedRows ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8) : EdgeInsets.zero,
+        children: [
+          if (!tc.useGlass) _SectionHeader(tc: tc, count: rooms.length),
+          if (tc.useGlass) const SizedBox(height: 4),
+          ...rooms.map((r) => _BuddyRow(
+            room: r,
+            tc: tc,
+            muted: _mutedCache[r.id] ?? false,
+            onDelete: () => _confirmDelete(context, r, tc),
+            onMuteToggle: () => _getMuted(r.id).then((cur) => _setMuted(r.id, !cur)),
+            onLongPress: () => _showContextMenu(context, r),
+          )),
         ],
+      ),
     );
   }
 }
 
-// ── Per-conversation context menu (bottom sheet) ───────────────────────────
+// ── Glow orb (Glass theme only) ────────────────────────────────────────────────
+
+class _GlowOrb extends StatelessWidget {
+  final Color color;
+  final double size;
+  const _GlowOrb({required this.color, required this.size});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size, height: size,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      gradient: RadialGradient(colors: [color.withAlpha(80), Colors.transparent]),
+    ),
+  );
+}
+
+// ── Title bar ──────────────────────────────────────────────────────────────────
+
+class _TitleBar extends StatelessWidget {
+  final VeilThemeColors tc;
+  final VeilThemeNotifier vtn;
+  final String screenName;
+  final VoidCallback onNew;
+  const _TitleBar({required this.tc, required this.vtn, required this.screenName, required this.onNew});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget bar = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(children: [
+        Icon(Icons.lock, color: Colors.white.withAlpha(230), size: 18),
+        const SizedBox(width: 8),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Veil',
+              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(screenName,
+              style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 12),
+              overflow: TextOverflow.ellipsis),
+        ])),
+        // Theme cycle button
+        _TitleIconBtn(
+          icon: vtn.mode.icon,
+          tooltip: 'Theme: ${vtn.mode.label}',
+          onTap: () {
+            vtn.cycle();
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Theme: ${vtn.mode.label}'),
+              duration: const Duration(seconds: 1),
+              behavior: SnackBarBehavior.floating,
+            ));
+          },
+        ),
+        _TitleIconBtn(icon: Icons.edit_note, tooltip: 'New message', onTap: onNew),
+        _TitleIconBtn(icon: Icons.settings, tooltip: 'Settings',
+            onTap: () => context.go('/buddylist/settings')),
+      ]),
+    );
+
+    if (tc.useGlass) {
+      return ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: tc.titleStart,
+              border: Border(bottom: BorderSide(color: Colors.white.withAlpha(20))),
+            ),
+            child: bar,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [tc.titleStart, tc.titleEnd]),
+      ),
+      child: bar,
+    );
+  }
+}
+
+class _TitleIconBtn extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  const _TitleIconBtn({required this.icon, required this.tooltip, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Icon(icon, color: Colors.white.withAlpha(220), size: 20),
+      ),
+    ),
+  );
+}
+
+// ── Section header ─────────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  final VeilThemeColors tc;
+  final int count;
+  const _SectionHeader({required this.tc, required this.count});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    color: tc.sectionBg,
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+    child: Row(children: [
+      const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
+      Text('Conversations ($count)',
+          style: TextStyle(color: tc.sectionText, fontSize: 13, fontWeight: FontWeight.bold)),
+    ]),
+  );
+}
+
+// ── Buddy row ──────────────────────────────────────────────────────────────────
+
+class _BuddyRow extends StatelessWidget {
+  final Room room;
+  final VeilThemeColors tc;
+  final bool muted;
+  final VoidCallback onDelete;
+  final VoidCallback onMuteToggle;
+  final VoidCallback onLongPress;
+  const _BuddyRow({
+    required this.room, required this.tc, required this.muted,
+    required this.onDelete, required this.onMuteToggle, required this.onLongPress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final name  = room.getLocalizedDisplayname();
+    final last  = room.lastEvent;
+    final unread = room.notificationCount > 0;
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+
+    final rowPadding = tc.roundedRows
+        ? const EdgeInsets.only(bottom: 8)
+        : EdgeInsets.zero;
+
+    return Padding(
+      padding: rowPadding,
+      child: Slidable(
+        key: ValueKey(room.id),
+        startActionPane: ActionPane(
+          motion: const DrawerMotion(),
+          extentRatio: 0.25,
+          children: [
+            SlidableAction(
+              onPressed: (_) => onMuteToggle(),
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+              icon: muted ? Icons.volume_up : Icons.volume_off,
+              label: muted ? 'Unmute' : 'Mute',
+            ),
+          ],
+        ),
+        endActionPane: ActionPane(
+          motion: const DrawerMotion(),
+          extentRatio: 0.25,
+          children: [
+            SlidableAction(
+              onPressed: (_) => onDelete(),
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              icon: Icons.delete,
+              label: 'Delete',
+            ),
+          ],
+        ),
+        child: GestureDetector(
+          onLongPress: onLongPress,
+          child: InkWell(
+            onTap: () => context.go('/buddylist/chat/${Uri.encodeComponent(room.id)}'),
+            borderRadius: tc.roundedRows ? BorderRadius.circular(tc.rowRadius) : BorderRadius.zero,
+            child: _buildRowContent(context, name, initial, last, unread),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRowContent(BuildContext context, String name, String initial, dynamic last, bool unread) {
+    final content = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: tc.roundedRows
+          ? BoxDecoration(
+              borderRadius: BorderRadius.circular(tc.rowRadius),
+              border: tc.useGlass
+                  ? Border.all(color: Colors.white.withAlpha(20))
+                  : (tc.divider == Colors.transparent ? null
+                      : Border.all(color: tc.divider, width: 0.5)),
+              color: tc.useGlass ? null : tc.rowBg,
+              boxShadow: tc.divider != Colors.transparent && !tc.useGlass
+                  ? [BoxShadow(color: Colors.black.withAlpha(18), blurRadius: 6, offset: const Offset(0, 2))]
+                  : null,
+            )
+          : BoxDecoration(
+              color: tc.rowBg,
+              border: Border(bottom: BorderSide(color: tc.divider, width: 0.5)),
+            ),
+      child: Row(children: [
+        _Avatar(initial: initial, tc: tc),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Row(children: [
+              Flexible(child: Text(name,
+                style: TextStyle(fontSize: 16, fontWeight: unread ? FontWeight.bold : FontWeight.w500,
+                    color: tc.nameText),
+                overflow: TextOverflow.ellipsis)),
+              if (muted) ...[
+                const SizedBox(width: 4),
+                Icon(Icons.volume_off, size: 13, color: Colors.orange.shade400),
+              ],
+            ])),
+            if (last != null)
+              Text(timeago.format(last.originServerTs, allowFromNow: true),
+                  style: TextStyle(fontSize: 12, color: tc.timestampText)),
+            if (unread) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(color: tc.badgeBg, borderRadius: BorderRadius.circular(10)),
+                child: Text('${room.notificationCount}',
+                    style: TextStyle(color: tc.badgeText, fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ]),
+          const SizedBox(height: 2),
+          if (last != null)
+            Text(last.body ?? '',
+              style: TextStyle(fontSize: 13, color: tc.previewText,
+                  fontWeight: unread ? FontWeight.bold : FontWeight.normal),
+              overflow: TextOverflow.ellipsis, maxLines: 1),
+        ])),
+      ]),
+    );
+
+    if (tc.useGlass) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(tc.rowRadius),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: tc.rowBg,
+              borderRadius: BorderRadius.circular(tc.rowRadius),
+              border: Border.all(color: Colors.white.withAlpha(20)),
+            ),
+            child: content,
+          ),
+        ),
+      );
+    }
+
+    return content;
+  }
+}
+
+// ── Avatar ─────────────────────────────────────────────────────────────────────
+
+class _Avatar extends StatelessWidget {
+  final String initial;
+  final VeilThemeColors tc;
+  const _Avatar({required this.initial, required this.tc});
+
+  @override
+  Widget build(BuildContext context) {
+    final child = Stack(children: [
+      Container(
+        width: 46, height: 46,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: tc.gradientAvatar
+              ? LinearGradient(
+                  colors: VeilThemeColors.avatarGradientFor(initial),
+                  begin: Alignment.topLeft, end: Alignment.bottomRight)
+              : null,
+          color: tc.gradientAvatar ? null : tc.solidAvatarBg,
+        ),
+        child: Center(child: Text(initial,
+            style: TextStyle(color: tc.avatarText, fontSize: 19, fontWeight: FontWeight.bold))),
+      ),
+      Positioned(bottom: 1, right: 1,
+        child: Container(
+          width: 12, height: 12,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AimColors.online,
+            border: Border.all(color: tc.presenceBorder, width: 1.5),
+          ),
+        ),
+      ),
+    ]);
+
+    return SizedBox(width: 46, height: 46, child: child);
+  }
+}
+
+// ── Bottom toolbar ─────────────────────────────────────────────────────────────
+
+class _BottomToolbar extends StatelessWidget {
+  final VeilThemeColors tc;
+  final VoidCallback onIM;
+  final VoidCallback onSettings;
+  final VoidCallback onSignOff;
+  const _BottomToolbar({required this.tc, required this.onIM, required this.onSettings, required this.onSignOff});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget bar = Row(children: [
+      _ToolbarBtn(icon: Icons.message, label: 'IM', tc: tc, onTap: onIM),
+      _ToolbarBtn(icon: Icons.settings, label: 'Settings', tc: tc, onTap: onSettings),
+      const Spacer(),
+      _ToolbarBtn(icon: Icons.logout, label: 'Sign Off', tc: tc, onTap: onSignOff),
+    ]);
+
+    if (tc.useGlass) {
+      return ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            height: 64,
+            decoration: BoxDecoration(
+              color: tc.toolbarBg,
+              border: Border(top: BorderSide(color: Colors.white.withAlpha(20))),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: bar,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      height: 64,
+      color: tc.toolbarBg,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: tc.divider == Colors.transparent
+            ? Colors.white.withAlpha(20) : tc.divider)),
+      ),
+      child: bar,
+    );
+  }
+}
+
+class _ToolbarBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VeilThemeColors tc;
+  final VoidCallback onTap;
+  const _ToolbarBtn({required this.icon, required this.label, required this.tc, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(8),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 22, color: tc.toolbarText),
+        const SizedBox(height: 2),
+        Text(label, style: TextStyle(fontSize: 11, color: tc.toolbarText)),
+      ]),
+    ),
+  );
+}
+
+// ── Context menu bottom sheet ──────────────────────────────────────────────────
 
 class _ConvContextMenu extends StatefulWidget {
   final Room room;
   final ConversationPrefs prefs;
+  final VeilThemeColors tc;
   final ValueChanged<bool> onMuteToggle;
   final VoidCallback onDelete;
   final VoidCallback onRefresh;
   const _ConvContextMenu({
-    required this.room, required this.prefs,
-    required this.onMuteToggle, required this.onDelete,
-    required this.onRefresh,
+    required this.room, required this.prefs, required this.tc,
+    required this.onMuteToggle, required this.onDelete, required this.onRefresh,
   });
   @override
   State<_ConvContextMenu> createState() => _ConvContextMenuState();
@@ -184,15 +553,14 @@ class _ConvContextMenuState extends State<_ConvContextMenu> {
   @override
   void initState() {
     super.initState();
-    _muted = widget.prefs.muted;
+    _muted        = widget.prefs.muted;
     _disappearing = widget.prefs.disappearingSecs;
-    _themeKey = widget.prefs.themeKey;
+    _themeKey     = widget.prefs.themeKey;
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? AimColors.darkText : Colors.black;
+    final tc = widget.tc;
     final name = widget.room.getLocalizedDisplayname();
 
     return SafeArea(
@@ -202,104 +570,64 @@ class _ConvContextMenuState extends State<_ConvContextMenu> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            gradient: LinearGradient(colors: isDark
-                ? [AimColors.darkTitleBar, const Color(0xFF1A3A6A)]
-                : [AimColors.titleBarStart, AimColors.titleBarEnd]),
+            gradient: LinearGradient(colors: [tc.titleStart, tc.titleEnd]),
           ),
-          child: Text(name,
-            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-            overflow: TextOverflow.ellipsis),
+          child: Text(name, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis),
         ),
 
-        // Mute toggle
-        _MenuTile(
-          icon: _muted ? Icons.volume_off : Icons.volume_up,
-          iconColor: _muted ? Colors.orange : (isDark ? Colors.grey[300]! : Colors.black87),
+        _MenuTile(icon: _muted ? Icons.volume_up : Icons.volume_off,
+          iconColor: _muted ? Colors.orange : tc.toolbarText,
           label: _muted ? 'Unmute Conversation' : 'Mute Conversation',
-          textColor: textColor,
+          textColor: tc.nameText,
           onTap: () async {
-            final newVal = !_muted;
-            await widget.prefs.setMuted(newVal);
-            widget.onMuteToggle(newVal);
-            setState(() => _muted = newVal);
+            final v = !_muted;
+            await widget.prefs.setMuted(v);
+            widget.onMuteToggle(v);
+            setState(() => _muted = v);
           },
         ),
-
-        // Hide
-        _MenuTile(
-          icon: Icons.visibility_off,
-          iconColor: isDark ? Colors.grey[300]! : Colors.black87,
-          label: 'Hide Conversation',
-          textColor: textColor,
+        _MenuTile(icon: Icons.visibility_off, iconColor: tc.toolbarText,
+          label: 'Hide Conversation', textColor: tc.nameText,
           onTap: () async {
             await widget.prefs.setHidden(true);
             Navigator.pop(context);
             widget.onRefresh();
           },
         ),
-
-        // Disappearing messages
-        _MenuTile(
-          icon: Icons.timer,
-          iconColor: isDark ? Colors.grey[300]! : Colors.black87,
-          label: 'Disappearing Messages',
+        _MenuTile(icon: Icons.timer, iconColor: tc.toolbarText,
+          label: 'Disappearing Messages', textColor: tc.nameText,
           subtitle: _disappearing == 0 ? 'Off'
               : _disappearing < 3600 ? '${_disappearing ~/ 60}m'
               : '${_disappearing ~/ 3600}h',
-          textColor: textColor,
           onTap: () => _showDisappearingPicker(context),
         ),
-
-        // Theme settings
-        _MenuTile(
-          icon: Icons.palette,
-          iconColor: isDark ? Colors.grey[300]! : Colors.black87,
-          label: 'Conversation Theme',
+        _MenuTile(icon: Icons.palette, iconColor: tc.toolbarText,
+          label: 'Conversation Theme', textColor: tc.nameText,
           subtitle: ConversationPrefs.themes[_themeKey]?.label ?? 'Classic AIM',
-          textColor: textColor,
           onTap: () => _showThemePicker(context),
         ),
-
         const Divider(height: 1),
-
-        // Delete
-        _MenuTile(
-          icon: Icons.delete_forever,
-          iconColor: Colors.red,
-          label: 'Delete Conversation',
-          textColor: Colors.red,
-          onTap: () {
-            Navigator.pop(context);
-            widget.onDelete();
-          },
+        _MenuTile(icon: Icons.delete_forever, iconColor: Colors.red,
+          label: 'Delete Conversation', textColor: Colors.red,
+          onTap: () { Navigator.pop(context); widget.onDelete(); },
         ),
-
         const SizedBox(height: 8),
       ]),
     );
   }
 
   void _showDisappearingPicker(BuildContext ctx) async {
-    final options = [
-      (0, 'Off'),
-      (30, '30 seconds'),
-      (300, '5 minutes'),
-      (3600, '1 hour'),
-      (86400, '24 hours'),
-      (604800, '7 days'),
-    ];
+    final options = [(0,'Off'),(30,'30 seconds'),(300,'5 minutes'),(3600,'1 hour'),(86400,'24 hours'),(604800,'7 days')];
     await showDialog(
       context: ctx,
       builder: (dialogCtx) => AlertDialog(
-        backgroundColor: Theme.of(ctx).brightness == Brightness.dark
-            ? AimColors.darkBuddyBg : AimColors.buddyListBg,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(widget.tc.rowRadius)),
         title: const Text('Disappearing Messages', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         content: Column(mainAxisSize: MainAxisSize.min, children: options.map((o) {
           final (secs, label) = o;
           return RadioListTile<int>(
-            value: secs,
-            groupValue: _disappearing,
+            value: secs, groupValue: _disappearing,
             title: Text(label, style: const TextStyle(fontSize: 15)),
             onChanged: (v) async {
               if (v == null) return;
@@ -317,31 +645,24 @@ class _ConvContextMenuState extends State<_ConvContextMenu> {
     await showDialog(
       context: ctx,
       builder: (dialogCtx) => AlertDialog(
-        backgroundColor: Theme.of(ctx).brightness == Brightness.dark
-            ? AimColors.darkBuddyBg : AimColors.buddyListBg,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(widget.tc.rowRadius)),
         title: const Text('Conversation Theme', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         content: Column(mainAxisSize: MainAxisSize.min,
-          children: ConversationPrefs.themes.entries.map((e) {
-            return RadioListTile<String>(
-              value: e.key,
-              groupValue: _themeKey,
-              title: Row(children: [
-                Container(width: 18, height: 18,
-                  decoration: BoxDecoration(color: e.value.chatBg,
-                    border: Border.all(color: Colors.grey)),
-                ),
-                const SizedBox(width: 8),
-                Text(e.value.label, style: const TextStyle(fontSize: 15)),
-              ]),
-              onChanged: (v) async {
-                if (v == null) return;
-                await widget.prefs.setTheme(v);
-                setState(() => _themeKey = v);
-                Navigator.pop(dialogCtx);
-              },
-            );
-          }).toList(),
+          children: ConversationPrefs.themes.entries.map((e) => RadioListTile<String>(
+            value: e.key, groupValue: _themeKey,
+            title: Row(children: [
+              Container(width: 18, height: 18,
+                decoration: BoxDecoration(color: e.value.chatBg, border: Border.all(color: Colors.grey))),
+              const SizedBox(width: 8),
+              Text(e.value.label, style: const TextStyle(fontSize: 15)),
+            ]),
+            onChanged: (v) async {
+              if (v == null) return;
+              await widget.prefs.setTheme(v);
+              setState(() => _themeKey = v);
+              Navigator.pop(dialogCtx);
+            },
+          )).toList(),
         ),
       ),
     );
@@ -355,282 +676,48 @@ class _MenuTile extends StatelessWidget {
   final String? subtitle;
   final Color textColor;
   final VoidCallback onTap;
-  const _MenuTile({
-    required this.icon, required this.iconColor,
-    required this.label, required this.textColor,
-    required this.onTap, this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(children: [
-          Icon(icon, size: 26, color: iconColor),
-          const SizedBox(width: 16),
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: TextStyle(fontSize: 16, color: textColor, fontWeight: FontWeight.w500)),
-              if (subtitle != null)
-                Text(subtitle!, style: TextStyle(fontSize: 13, color: textColor.withAlpha(153))),
-            ],
-          )),
-        ]),
-      ),
-    );
-  }
-}
-
-// ── Title bar ──────────────────────────────────────────────────────────────
-
-class _AimTitleBar extends StatelessWidget {
-  final String title;
-  final bool isDark;
-  final List<Widget> actions;
-  const _AimTitleBar({required this.title, required this.isDark, this.actions = const []});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 48,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: isDark
-            ? [AimColors.darkTitleBar, const Color(0xFF1A3A6A)]
-            : [AimColors.titleBarStart, AimColors.titleBarEnd]),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Row(children: [
-        const Icon(Icons.lock, color: Colors.white, size: 20),
-        const SizedBox(width: 6),
-        Expanded(child: Text('Veil — $title',
-            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))),
-        ...actions,
-      ]),
-    );
-  }
-}
-
-class _TitleBarButton extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-  const _TitleBarButton({required this.icon, required this.tooltip, required this.onTap});
+  const _MenuTile({required this.icon, required this.iconColor, required this.label,
+      required this.textColor, required this.onTap, this.subtitle});
 
   @override
   Widget build(BuildContext context) => InkWell(
     onTap: onTap,
-    child: Padding(padding: const EdgeInsets.all(8),
-        child: Icon(icon, color: Colors.white, size: 22)),
-  );
-}
-
-// ── Section header ─────────────────────────────────────────────────────────
-
-class _SectionHeader extends StatelessWidget {
-  final String text;
-  final bool isDark;
-  const _SectionHeader(this.text, {required this.isDark});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    color: isDark ? AimColors.darkSectionBg : AimColors.sectionHeaderBg,
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-    child: Row(children: [
-      const Icon(Icons.arrow_drop_down, color: Colors.white, size: 22),
-      Text(text, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-    ]),
-  );
-}
-
-// ── Buddy row with swipe actions ───────────────────────────────────────────
-
-class _BuddyRow extends StatelessWidget {
-  final Room room;
-  final bool isDark;
-  final bool muted;
-  final VoidCallback onDelete;
-  final VoidCallback onMuteToggle;
-  final VoidCallback onLongPress;
-  const _BuddyRow({
-    required this.room, required this.isDark, required this.muted,
-    required this.onDelete, required this.onMuteToggle, required this.onLongPress,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final name = room.getLocalizedDisplayname();
-    final last = room.lastEvent;
-    final unread = room.notificationCount > 0;
-
-    return Slidable(
-      key: ValueKey(room.id),
-      // Swipe right → mute/unmute
-      startActionPane: ActionPane(
-        motion: const DrawerMotion(),
-        extentRatio: 0.28,
-        children: [
-          SlidableAction(
-            onPressed: (_) => onMuteToggle(),
-            backgroundColor: Colors.orange,
-            foregroundColor: Colors.white,
-            icon: muted ? Icons.volume_up : Icons.volume_off,
-            label: muted ? 'Unmute' : 'Mute',
-            padding: const EdgeInsets.all(0),
-          ),
-        ],
-      ),
-      // Swipe left → delete
-      endActionPane: ActionPane(
-        motion: const DrawerMotion(),
-        extentRatio: 0.28,
-        children: [
-          SlidableAction(
-            onPressed: (_) => onDelete(),
-            backgroundColor: Colors.red,
-            foregroundColor: Colors.white,
-            icon: Icons.delete,
-            label: 'Delete',
-            padding: const EdgeInsets.all(0),
-          ),
-        ],
-      ),
-      child: GestureDetector(
-        onLongPress: onLongPress,
-        child: InkWell(
-          onTap: () => context.go('/buddylist/chat/${Uri.encodeComponent(room.id)}'),
-          child: Container(
-            color: isDark ? AimColors.darkBuddyBg : Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(
-                  color: isDark ? AimColors.darkBorder : const Color(0xFFDDDDDD), width: 0.5)),
-            ),
-            child: Row(children: [
-              // Avatar circle
-              Container(
-                width: 46, height: 46,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isDark ? AimColors.darkSectionBg : AimColors.sectionHeaderBg,
-                ),
-                child: Center(child: Text(
-                  name.isNotEmpty ? name[0].toUpperCase() : '?',
-                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                )),
-              ),
-              const SizedBox(width: 12),
-              Expanded(child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Expanded(child: Row(children: [
-                      Flexible(child: Text(name,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: unread ? FontWeight.bold : FontWeight.normal,
-                          color: isDark ? AimColors.darkText : Colors.black,
-                        ),
-                        overflow: TextOverflow.ellipsis)),
-                      if (muted) ...[
-                        const SizedBox(width: 6),
-                        Icon(Icons.volume_off, size: 15, color: Colors.orange.shade400),
-                      ],
-                    ])),
-                    if (last != null)
-                      Text(timeago.format(last.originServerTs, allowFromNow: true),
-                        style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[500] : Colors.grey[600])),
-                    if (unread) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF17369C),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text('${room.notificationCount}',
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ]),
-                  const SizedBox(height: 2),
-                  if (last != null)
-                    Text(last.body ?? '',
-                      style: TextStyle(fontSize: 13,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
-                        fontWeight: unread ? FontWeight.bold : FontWeight.normal),
-                      overflow: TextOverflow.ellipsis, maxLines: 1),
-                ],
-              )),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Presence dot ───────────────────────────────────────────────────────────
-
-class _PresenceDot extends StatelessWidget {
-  final bool online;
-  const _PresenceDot({required this.online});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 12, height: 12,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      color: online ? AimColors.online : AimColors.offline,
-      border: Border.all(color: Colors.white, width: 1),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(children: [
+        Icon(icon, size: 26, color: iconColor),
+        const SizedBox(width: 16),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: TextStyle(fontSize: 16, color: textColor, fontWeight: FontWeight.w500)),
+          if (subtitle != null)
+            Text(subtitle!, style: TextStyle(fontSize: 13, color: textColor.withAlpha(153))),
+        ])),
+      ]),
     ),
   );
 }
 
-// ── Bottom toolbar button ──────────────────────────────────────────────────
-
-class _ToolbarButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  const _ToolbarButton({required this.icon, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 24, color: isDark ? Colors.grey[300] : Colors.black87),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(fontSize: 12, color: isDark ? Colors.grey[300] : Colors.black87)),
-        ]),
-      ),
-    );
-  }
-}
-
-// ── Empty state ────────────────────────────────────────────────────────────
+// ── Empty state ────────────────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
+  final VeilThemeColors tc;
   final VoidCallback onNew;
-  const _EmptyState({required this.onNew});
+  const _EmptyState({required this.tc, required this.onNew});
 
   @override
   Widget build(BuildContext context) => Center(
     child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.people_outline, size: 60, color: Colors.grey),
+      Icon(Icons.people_outline, size: 60, color: tc.previewText),
       const SizedBox(height: 12),
-      const Text('No buddies online.', style: TextStyle(fontSize: 16, color: Colors.grey)),
+      Text('No conversations yet.', style: TextStyle(fontSize: 16, color: tc.previewText)),
       const SizedBox(height: 16),
       ElevatedButton(
         onPressed: onNew,
         style: ElevatedButton.styleFrom(
+          backgroundColor: tc.badgeBg,
+          foregroundColor: tc.badgeText,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(tc.rowRadius)),
           textStyle: const TextStyle(fontSize: 15),
         ),
         child: const Text('Send Instant Message'),

@@ -38,6 +38,13 @@ class AimColors {
   static const aimTitleBar   = titleBarStart;
   static const aimTitleBarEnd = titleBarEnd;
   static const aimOnline     = online;
+  static const aimAway       = away;
+  static const aimOffline    = offline;
+  static const aimBorder     = winBorder;
+  static const aimBubbleOut  = Color(0xFFDCEEFB); // my messages (light)
+  static const aimBubbleIn   = Color(0xFFFFFFFF); // their messages (light)
+  static const darkBubbleOut = Color(0xFF1A2A4A); // my messages (dark)
+  static const darkBubbleIn  = Color(0xFF1E1E2A); // their messages (dark)
   static const darkBackground = Color(0xFF1A1A1A);
   static const darkSurface   = Color(0xFF1E1E1E);
   static const darkSurface2  = darkSectionBg;
