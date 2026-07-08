@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -32,6 +33,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Timeline? _timeline;
   bool _loadingTimeline = true;
   bool _sending = false;
+  XFile?     _pendingImage;
+  Uint8List? _pendingImageBytes;
 
   Room? get _room =>
       context.read<ClientManager>().roomById(Uri.decodeComponent(widget.roomId));
@@ -82,9 +85,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendText(VeilUserPrefs prefs) async {
-    final text = _inputCtrl.text.trim();
-    if (text.isEmpty || _room == null) return;
+    final text  = _inputCtrl.text.trim();
+    final room  = _room;
+    if (room == null) return;
+    if (text.isEmpty && _pendingImage == null) return;
+
     _inputCtrl.clear();
+
+    // Send staged image first, then any text.
+    if (_pendingImage != null) await _sendStagedImage(room);
+    if (text.isEmpty) return;
+
     setState(() => _sending = true);
     try {
       final html = _buildHtml(text, prefs);
@@ -96,28 +107,39 @@ class _ChatScreenState extends State<ChatScreen> {
           'formatted_body': html,
         },
       };
-      await _room!.sendEvent(content);
+      await room.sendEvent(content);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send: $e'), duration: const Duration(seconds: 4)));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
   }
 
+  /// Stage an image for sending — does NOT send immediately.
   Future<void> _sendImage() async {
-    // Capture room before the async gap — context.read is unsafe after awaits.
-    final room = _room;
-    if (room == null) return;
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
     if (picked == null) return;
-    setState(() => _sending = true);
+    final bytes = await picked.readAsBytes();
+    if (mounted) setState(() { _pendingImage = picked; _pendingImageBytes = bytes; });
+  }
+
+  /// Actually sends the staged image. Called from _sendText.
+  Future<void> _sendStagedImage(Room room) async {
+    final imgFile  = _pendingImage;
+    final imgBytes = _pendingImageBytes;
+    if (imgFile == null || imgBytes == null) return;
+    setState(() { _pendingImage = null; _pendingImageBytes = null; _sending = true; });
     try {
-      final bytes = await picked.readAsBytes();
-      final ext  = picked.name.split('.').last.toLowerCase();
+      final ext  = imgFile.name.split('.').last.toLowerCase();
       final mime = ext == 'png' ? 'image/png' : ext == 'gif' ? 'image/gif' : 'image/jpeg';
-      await room.sendFileEvent(MatrixFile(bytes: bytes, name: picked.name, mimeType: mime));
+      await room.sendFileEvent(MatrixFile(bytes: imgBytes, name: imgFile.name, mimeType: mime));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to send image: $e'), duration: const Duration(seconds: 4)));
-    } finally { if (mounted) setState(() => _sending = false); }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 
   Future<void> _sendFile() async {
@@ -336,6 +358,26 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
 
+          // ── Pending image preview ─────────────────────────────────────
+          if (_pendingImageBytes != null)
+            Container(
+              color: tc.inputBg,
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+              child: Row(children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.memory(_pendingImageBytes!, height: 72, width: 72, fit: BoxFit.cover),
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: Text('Image staged — press Send to send',
+                  style: TextStyle(fontSize: 13, color: tc.previewText))),
+                IconButton(
+                  icon: Icon(Icons.close, color: tc.previewText, size: 20),
+                  onPressed: () => setState(() { _pendingImage = null; _pendingImageBytes = null; }),
+                ),
+              ]),
+            ),
+
           // ── Formatting toolbar ────────────────────────────────────────
           Container(
             height: 52,
@@ -417,7 +459,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     ),
-                    onSubmitted: (_) => _sendText(prefs),
                   ),
                 ),
               ),
@@ -729,11 +770,13 @@ class _AimMessageLine extends StatelessWidget {
     }
 
     final msgType = event.messageType;
-    if (msgType == MessageTypes.Image || msgType == MessageTypes.Audio ||
-        msgType == MessageTypes.Video || msgType == MessageTypes.File) {
-      final label = msgType == MessageTypes.Image ? '[Image]'
-                  : msgType == MessageTypes.Audio ? '[Audio]'
-                  : msgType == MessageTypes.Video ? '[Video]'
+    if (msgType == MessageTypes.Image) {
+      return _buildImageMessage(timeSpan, nameSpan, bodyFamily, bodySize);
+    }
+    if (msgType == MessageTypes.Audio || msgType == MessageTypes.Video ||
+        msgType == MessageTypes.File) {
+      final label = msgType == MessageTypes.Audio ? '[Audio: ${event.body}]'
+                  : msgType == MessageTypes.Video ? '[Video: ${event.body}]'
                   : '[File: ${event.body}]';
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
@@ -767,6 +810,54 @@ class _AimMessageLine extends StatelessWidget {
         TextSpan(text: event.body,
           style: TextStyle(fontFamily: bodyFamily, fontSize: bodySize, color: tc.nameText)),
       ])),
+    );
+  }
+
+  Widget _buildImageMessage(TextSpan timeSpan, TextSpan nameSpan,
+      String bodyFamily, double bodySize) {
+    final client = event.room.client;
+
+    // Matrix image events can carry the MXC URL in two places:
+    //   - event.content['url']        for unencrypted rooms
+    //   - event.content['file']['url'] for E2E-encrypted rooms
+    String? mxcUrl;
+    final fileMap = event.content['file'];
+    if (fileMap is Map) mxcUrl = fileMap['url'] as String?;
+    mxcUrl ??= event.content['url'] as String?;
+
+    Widget imageWidget;
+    if (mxcUrl != null && mxcUrl.startsWith('mxc://')) {
+      final mxcUri    = Uri.parse(mxcUrl);
+      final httpUrl   = '${client.homeserver}/_matrix/media/v3/download'
+                        '/${mxcUri.host}${mxcUri.path}';
+      final authToken = client.accessToken ?? '';
+      imageWidget = Image.network(
+        httpUrl,
+        headers: {'Authorization': 'Bearer $authToken'},
+        height: 220,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          alignment: Alignment.centerLeft,
+          child: Text('[Image — encrypted or unavailable]',
+            style: TextStyle(fontSize: bodySize, fontStyle: FontStyle.italic,
+              color: tc.previewText, fontFamily: bodyFamily)),
+        ),
+      );
+    } else {
+      imageWidget = Text('[Image]',
+        style: TextStyle(fontSize: bodySize, fontStyle: FontStyle.italic,
+          color: tc.previewText, fontFamily: bodyFamily));
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        RichText(text: TextSpan(children: [timeSpan, nameSpan])),
+        const SizedBox(height: 4),
+        imageWidget,
+      ]),
     );
   }
 }
