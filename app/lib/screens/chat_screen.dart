@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -15,7 +15,6 @@ import '../core/veil_theme.dart';
 import '../core/veil_user_prefs.dart';
 import '../widgets/disappearing_timer_dialog.dart';
 
-// Available AIM-era fonts
 const _kFonts = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Comic Sans MS', 'Georgia'];
 const _kSizes = [14.0, 16.0, 18.0, 20.0, 22.0, 24.0];
 
@@ -28,13 +27,17 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final _inputCtrl = TextEditingController();
+  final _inputCtrl  = TextEditingController();
   final _scrollCtrl = ScrollController();
   Timeline? _timeline;
   bool _loadingTimeline = true;
-  bool _sending = false;
+  bool _sending         = false;
   XFile?     _pendingImage;
   Uint8List? _pendingImageBytes;
+
+  // Typing indicator state
+  Timer? _typingTimer;
+  bool   _isTyping = false;
 
   Room? get _room =>
       context.read<ClientManager>().roomById(Uri.decodeComponent(widget.roomId));
@@ -43,11 +46,15 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     NotificationService.instance.activeRoomId = Uri.decodeComponent(widget.roomId);
+    _inputCtrl.addListener(_onTypingChanged);
     _loadTimeline();
   }
 
   @override
   void dispose() {
+    _typingTimer?.cancel();
+    // Stop typing notification on exit
+    _room?.setTyping(false);
     NotificationService.instance.activeRoomId = null;
     _timeline?.cancelSubscriptions();
     _inputCtrl.dispose();
@@ -61,10 +68,35 @@ class _ChatScreenState extends State<ChatScreen> {
     final timeline = await room.getTimeline(onUpdate: () => setState(() {}));
     setState(() { _timeline = timeline; _loadingTimeline = false; });
     await timeline.requestHistory(historyCount: 50);
+    // Send read receipt for latest message
+    final latest = timeline.events.where((e) => e.type == EventTypes.Message).firstOrNull;
+    if (latest != null) {
+      try { await room.setReadMarker(latest.eventId); } catch (_) {}
+    }
   }
 
-  /// Builds HTML-formatted body from the current text + user font prefs.
-  /// Returns null when no formatting is active (plain message stays plain).
+  void _onTypingChanged() {
+    final room = _room;
+    if (room == null) return;
+    if (_inputCtrl.text.isEmpty) {
+      if (_isTyping) {
+        _isTyping = false;
+        _typingTimer?.cancel();
+        room.setTyping(false);
+      }
+      return;
+    }
+    if (!_isTyping) {
+      _isTyping = true;
+      room.setTyping(true, timeout: 30000);
+    }
+    _typingTimer?.cancel();
+    _typingTimer = Timer(const Duration(seconds: 5), () {
+      _isTyping = false;
+      room.setTyping(false);
+    });
+  }
+
   String? _buildHtml(String text, VeilUserPrefs prefs) {
     final hasFormatting = prefs.bold || prefs.italic || prefs.underline
         || prefs.fontFamily != 'Arial'
@@ -85,29 +117,30 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendText(VeilUserPrefs prefs) async {
-    final text  = _inputCtrl.text.trim();
-    final room  = _room;
+    final text = _inputCtrl.text.trim();
+    final room = _room;
     if (room == null) return;
     if (text.isEmpty && _pendingImage == null) return;
 
     _inputCtrl.clear();
+    _isTyping = false;
+    _typingTimer?.cancel();
+    room.setTyping(false);
 
-    // Send staged image first, then any text.
     if (_pendingImage != null) await _sendStagedImage(room);
     if (text.isEmpty) return;
 
     setState(() => _sending = true);
     try {
       final html = _buildHtml(text, prefs);
-      final content = <String, dynamic>{
+      await room.sendEvent(<String, dynamic>{
         'msgtype': MessageTypes.Text,
         'body': text,
         if (html != null) ...{
           'format': 'org.matrix.custom.html',
           'formatted_body': html,
         },
-      };
-      await room.sendEvent(content);
+      });
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to send: $e'), duration: const Duration(seconds: 4)));
@@ -116,7 +149,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// Stage an image for sending — does NOT send immediately.
   Future<void> _sendImage() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
     if (picked == null) return;
@@ -124,7 +156,6 @@ class _ChatScreenState extends State<ChatScreen> {
     if (mounted) setState(() { _pendingImage = picked; _pendingImageBytes = bytes; });
   }
 
-  /// Actually sends the staged image. Called from _sendText.
   Future<void> _sendStagedImage(Room room) async {
     final imgFile  = _pendingImage;
     final imgBytes = _pendingImageBytes;
@@ -182,35 +213,23 @@ class _ChatScreenState extends State<ChatScreen> {
       builder: (_) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           if (isText)
-            _MsgMenuTile(
-              icon: Icons.copy,
-              label: 'Copy text',
-              color: tc.nameText,
+            _MsgMenuTile(icon: Icons.copy, label: 'Copy text', color: tc.nameText,
               onTap: () {
                 Navigator.pop(ctx);
                 Clipboard.setData(ClipboardData(text: event.body));
                 ScaffoldMessenger.of(ctx).showSnackBar(
                   const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)));
-              },
-            ),
-          _MsgMenuTile(
-            icon: Icons.timer_outlined,
-            label: 'Disappear in…',
-            color: tc.nameText,
+              }),
+          _MsgMenuTile(icon: Icons.timer_outlined, label: 'Disappear in…', color: tc.nameText,
             onTap: () async {
               Navigator.pop(ctx);
               await _pickDisappearTimer(ctx, event, room);
-            },
-          ),
-          _MsgMenuTile(
-            icon: Icons.delete_outline,
-            label: 'Delete for everyone',
-            color: Colors.red,
+            }),
+          _MsgMenuTile(icon: Icons.delete_outline, label: 'Delete for everyone', color: Colors.red,
             onTap: () async {
               Navigator.pop(ctx);
               try { await room.redactEvent(event.eventId); } catch (_) {}
-            },
-          ),
+            }),
         ]),
       ),
     );
@@ -218,15 +237,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _pickDisappearTimer(BuildContext ctx, Event event, Room room) async {
     const options = [
-      (30, '30 seconds'),
-      (60, '1 minute'),
-      (300, '5 minutes'),
-      (1800, '30 minutes'),
-      (3600, '1 hour'),
-      (86400, '24 hours'),
-      (604800, '7 days'),
+      (30, '30 seconds'), (60, '1 minute'), (300, '5 minutes'),
+      (1800, '30 minutes'), (3600, '1 hour'), (86400, '24 hours'), (604800, '7 days'),
     ];
-
     final picked = await showDialog<int>(
       context: ctx,
       builder: (dialogCtx) => SimpleDialog(
@@ -235,24 +248,18 @@ class _ChatScreenState extends State<ChatScreen> {
           final (secs, label) = o;
           return SimpleDialogOption(
             onPressed: () => Navigator.pop(dialogCtx, secs),
-            child: Text(label, style: const TextStyle(fontSize: 16)),
-          );
+            child: Text(label, style: const TextStyle(fontSize: 16)));
         }).toList(),
       ),
     );
-
     if (picked == null) return;
     await DisappearingMessageService.instance.schedule(
-      eventId: event.eventId,
-      roomId: room.id,
-      after: Duration(seconds: picked),
-      client: room.client,
-    );
+      eventId: event.eventId, roomId: room.id,
+      after: Duration(seconds: picked), client: room.client);
     if (ctx.mounted) {
       ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
         content: Text('Message will disappear in ${options.firstWhere((o) => o.$1 == picked).$2}'),
-        duration: const Duration(seconds: 2),
-      ));
+        duration: const Duration(seconds: 2)));
     }
   }
 
@@ -265,15 +272,8 @@ class _ChatScreenState extends State<ChatScreen> {
         currentBold:      prefs.bold,
         currentItalic:    prefs.italic,
         currentUnderline: prefs.underline,
-        onChanged: (family, size, bold, italic, underline) {
-          prefs.setFont(
-            family:    family,
-            size:      size,
-            bold:      bold,
-            italic:    italic,
-            underline: underline,
-          );
-        },
+        onChanged: (family, size, bold, italic, underline) =>
+          prefs.setFont(family: family, size: size, bold: bold, italic: italic, underline: underline),
       ),
     );
   }
@@ -289,36 +289,35 @@ class _ChatScreenState extends State<ChatScreen> {
     if (room == null) {
       return PopScope(
         canPop: false,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) context.go('/buddylist');
-        },
+        onPopInvokedWithResult: (didPop, _) { if (!didPop) context.go('/buddylist'); },
         child: Scaffold(
           body: Column(children: [
             _ChatTitleBar(title: 'Chat', tc: tc, onBack: () => context.go('/buddylist')),
-            Expanded(child: Container(
-              color: tc.chatBg,
-              child: const Center(child: Text('Room not found')),
-            )),
+            Expanded(child: Container(color: tc.chatBg,
+              child: const Center(child: Text('Room not found')))),
           ]),
         ),
       );
     }
 
-    final events = _timeline?.events ?? [];
+    final events    = _timeline?.events ?? [];
     final msgEvents = events
         .where((e) => e.type == EventTypes.Message || e.type == EventTypes.Encrypted)
         .toList();
 
+    // Who is typing right now (excluding ourselves)
+    final typingUsers = room.typingUsers
+        .where((u) => u.id != myId)
+        .map((u) => u.id.split(':').first.replaceFirst('@', ''))
+        .toList();
+
     final toolbarBorderColor = tc.divider == Colors.transparent
-        ? tc.scaffold.withAlpha(60)
-        : tc.divider;
+        ? tc.scaffold.withAlpha(60) : tc.divider;
     final toolbarBorder = BorderSide(color: toolbarBorderColor);
 
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) context.go('/buddylist');
-      },
+      onPopInvokedWithResult: (didPop, _) { if (!didPop) context.go('/buddylist'); },
       child: Scaffold(
         body: Column(children: [
           _ChatTitleBar(
@@ -344,7 +343,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           itemCount: msgEvents.length,
                           itemBuilder: (_, i) {
                             final event = msgEvents[i];
-                            final isMe = event.senderId == myId;
+                            final isMe  = event.senderId == myId;
                             return GestureDetector(
                               onLongPress: () => _showMessageMenu(context, event),
                               child: _AimMessageLine(
@@ -357,6 +356,17 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
             ),
           ),
+
+          // ── Typing indicator ──────────────────────────────────────────
+          if (typingUsers.isNotEmpty)
+            Container(
+              width: double.infinity,
+              color: tc.chatBg,
+              padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
+              child: Text(
+                '${typingUsers.join(', ')} ${typingUsers.length == 1 ? 'is' : 'are'} typing…',
+                style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: tc.previewText)),
+            ),
 
           // ── Pending image preview ─────────────────────────────────────
           if (_pendingImageBytes != null)
@@ -383,9 +393,7 @@ class _ChatScreenState extends State<ChatScreen> {
             height: 52,
             color: tc.toolbarBg,
             padding: const EdgeInsets.symmetric(horizontal: 4),
-            decoration: BoxDecoration(
-              border: Border(top: toolbarBorder, bottom: toolbarBorder),
-            ),
+            decoration: BoxDecoration(border: Border(top: toolbarBorder, bottom: toolbarBorder)),
             child: Row(children: [
               _BarBtn(icon: Icons.image_outlined, tooltip: 'Send image',
                   color: tc.toolbarText, onTap: _sending ? null : _sendImage),
@@ -394,7 +402,6 @@ class _ChatScreenState extends State<ChatScreen> {
               _BarBtn(icon: Icons.timer_outlined, tooltip: 'Disappearing messages',
                   color: tc.toolbarText, onTap: _setDisappearing),
               const SizedBox(width: 4),
-              // Font family + size picker
               InkWell(
                 onTap: () => _openFontPicker(prefs),
                 child: Container(
@@ -404,9 +411,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     color: tc.inputBg.withAlpha(180),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text('A', style: TextStyle(
-                      fontFamily: prefs.fontFamily, fontSize: 16,
-                      fontWeight: FontWeight.bold, color: tc.nameText)),
+                    Text('A', style: TextStyle(fontFamily: prefs.fontFamily, fontSize: 16,
+                        fontWeight: FontWeight.bold, color: tc.nameText)),
                     const SizedBox(width: 4),
                     Text('${prefs.fontFamily} · ${prefs.fontSize.toInt()}pt',
                       style: TextStyle(fontSize: 13, color: tc.previewText)),
@@ -437,7 +443,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Container(
                   constraints: const BoxConstraints(maxHeight: 160),
                   decoration: BoxDecoration(
-                    color: tc.inputBg,
                     border: Border.all(color: toolbarBorderColor),
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -457,6 +462,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       hintText: 'Type a message...',
                       hintStyle: TextStyle(fontSize: prefs.fontSize, color: tc.previewText),
                       border: InputBorder.none,
+                      filled: true,
+                      fillColor: tc.inputBg,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     ),
                   ),
@@ -487,24 +494,20 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-// ── B / I / U toggle button ────────────────────────────────────────────────────
+// ── B / I / U toggle ──────────────────────────────────────────────────────────
 class _FormatToggle extends StatelessWidget {
   final String label;
   final bool active;
   final TextStyle style;
   final VeilThemeColors tc;
   final VoidCallback onTap;
-
-  const _FormatToggle({
-    required this.label, required this.active, required this.style,
-    required this.tc, required this.onTap,
-  });
+  const _FormatToggle({required this.label, required this.active, required this.style,
+      required this.tc, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final activeColor = tc.toolbarActive;
-    final borderColor = tc.divider == Colors.transparent
-        ? tc.scaffold.withAlpha(60) : tc.divider;
+    final activeColor  = tc.toolbarActive;
+    final borderColor  = tc.divider == Colors.transparent ? tc.scaffold.withAlpha(60) : tc.divider;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -515,33 +518,24 @@ class _FormatToggle extends StatelessWidget {
           border: Border.all(color: active ? activeColor : borderColor),
         ),
         child: Text(label,
-          style: style.copyWith(
-            fontFamily: 'Arial',
-            color: active ? tc.badgeText : tc.toolbarText,
-          )),
+          style: style.copyWith(fontFamily: 'Arial',
+            color: active ? tc.badgeText : tc.toolbarText)),
       ),
     );
   }
 }
 
-// ── Font picker dialog ─────────────────────────────────────────────────────────
+// ── Font picker dialog ────────────────────────────────────────────────────────
 class _FontPickerDialog extends StatefulWidget {
   final String currentFamily;
   final double currentSize;
-  final bool currentBold;
-  final bool currentItalic;
-  final bool currentUnderline;
-  final void Function(String family, double size, bool bold, bool italic, bool underline) onChanged;
-
+  final bool currentBold, currentItalic, currentUnderline;
+  final void Function(String, double, bool, bool, bool) onChanged;
   const _FontPickerDialog({
-    required this.currentFamily,
-    required this.currentSize,
-    required this.currentBold,
-    required this.currentItalic,
-    required this.currentUnderline,
+    required this.currentFamily, required this.currentSize,
+    required this.currentBold, required this.currentItalic, required this.currentUnderline,
     required this.onChanged,
   });
-
   @override
   State<_FontPickerDialog> createState() => _FontPickerDialogState();
 }
@@ -549,9 +543,7 @@ class _FontPickerDialog extends StatefulWidget {
 class _FontPickerDialogState extends State<_FontPickerDialog> {
   late String _family;
   late double _size;
-  late bool   _bold;
-  late bool   _italic;
-  late bool   _underline;
+  late bool   _bold, _italic, _underline;
 
   @override
   void initState() {
@@ -567,8 +559,7 @@ class _FontPickerDialogState extends State<_FontPickerDialog> {
   Widget build(BuildContext context) {
     final tc = context.read<VeilUserPrefs>().colors;
     final activeColor = tc.toolbarActive;
-    final borderColor = tc.divider == Colors.transparent
-        ? tc.scaffold.withAlpha(80) : tc.divider;
+    final borderColor = tc.divider == Colors.transparent ? tc.scaffold.withAlpha(80) : tc.divider;
 
     return AlertDialog(
       backgroundColor: tc.inputBg,
@@ -584,15 +575,12 @@ class _FontPickerDialogState extends State<_FontPickerDialog> {
             decoration: BoxDecoration(border: Border.all(color: borderColor)),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
-                value: _family,
-                isExpanded: true,
+                value: _family, isExpanded: true,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 style: TextStyle(fontSize: 16, color: tc.nameText),
                 dropdownColor: tc.inputBg,
-                items: _kFonts.map((f) => DropdownMenuItem(
-                  value: f,
-                  child: Text(f, style: TextStyle(fontFamily: f, fontSize: 16, color: tc.nameText)),
-                )).toList(),
+                items: _kFonts.map((f) => DropdownMenuItem(value: f,
+                  child: Text(f, style: TextStyle(fontFamily: f, fontSize: 16, color: tc.nameText)))).toList(),
                 onChanged: (v) => setState(() => _family = v!),
               ),
             ),
@@ -600,8 +588,7 @@ class _FontPickerDialogState extends State<_FontPickerDialog> {
           const SizedBox(height: 12),
           Text('Size', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: tc.nameText)),
           const SizedBox(height: 4),
-          Wrap(
-            spacing: 8, runSpacing: 8,
+          Wrap(spacing: 8, runSpacing: 8,
             children: _kSizes.map((s) {
               final sel = s == _size;
               return GestureDetector(
@@ -638,39 +625,30 @@ class _FontPickerDialogState extends State<_FontPickerDialog> {
               onTap: () => setState(() => _underline = !_underline)),
           ]),
           const SizedBox(height: 12),
-          // Live preview
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: tc.chatBg,
-              border: Border.all(color: borderColor)),
+            decoration: BoxDecoration(color: tc.chatBg, border: Border.all(color: borderColor)),
             child: RichText(text: TextSpan(children: [
               TextSpan(text: 'You: ',
                 style: TextStyle(fontFamily: _family, fontSize: _size,
                   fontWeight: FontWeight.bold, color: tc.myNameColor)),
               TextSpan(text: 'hey, how are you?',
-                style: TextStyle(
-                  fontFamily:  _family,
-                  fontSize:    _size,
+                style: TextStyle(fontFamily: _family, fontSize: _size,
                   fontWeight:  _bold      ? FontWeight.bold   : FontWeight.normal,
                   fontStyle:   _italic    ? FontStyle.italic  : FontStyle.normal,
                   decoration:  _underline ? TextDecoration.underline : TextDecoration.none,
-                  color: tc.nameText,
-                )),
+                  color: tc.nameText)),
             ])),
           ),
           const SizedBox(height: 12),
         ]),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text('Cancel', style: TextStyle(color: tc.previewText)),
-        ),
+        TextButton(onPressed: () => Navigator.pop(context),
+          child: Text('Cancel', style: TextStyle(color: tc.previewText))),
         ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: tc.badgeBg, foregroundColor: tc.badgeText),
+          style: ElevatedButton.styleFrom(backgroundColor: tc.badgeBg, foregroundColor: tc.badgeText),
           onPressed: () {
             widget.onChanged(_family, _size, _bold, _italic, _underline);
             Navigator.pop(context);
@@ -688,17 +666,13 @@ class _DialogToggle extends StatelessWidget {
   final VeilThemeColors tc;
   final TextStyle style;
   final VoidCallback onTap;
-
-  const _DialogToggle({
-    required this.label, required this.active, required this.tc,
-    required this.style, required this.onTap,
-  });
+  const _DialogToggle({required this.label, required this.active, required this.tc,
+      required this.style, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final activeColor = tc.toolbarActive;
-    final borderColor = tc.divider == Colors.transparent
-        ? tc.scaffold.withAlpha(80) : tc.divider;
+    final borderColor = tc.divider == Colors.transparent ? tc.scaffold.withAlpha(80) : tc.divider;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -709,16 +683,14 @@ class _DialogToggle extends StatelessWidget {
           border: Border.all(color: active ? activeColor : borderColor),
         ),
         child: Text(label,
-          style: style.copyWith(
-            fontFamily: 'Arial',
-            color: active ? tc.badgeText : tc.nameText,
-          )),
+          style: style.copyWith(fontFamily: 'Arial',
+            color: active ? tc.badgeText : tc.nameText)),
       ),
     );
   }
 }
 
-// ── AIM-style message line ─────────────────────────────────────────────────────
+// ── Message line ──────────────────────────────────────────────────────────────
 class _AimMessageLine extends StatelessWidget {
   final Event event;
   final bool isMe;
@@ -736,22 +708,89 @@ class _AimMessageLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final nameColor = isMe ? tc.myNameColor : tc.theirNameColor;
+    // Glass theme gets modern bubble layout
+    if (tc.useGlass) return _buildGlassBubble(context);
+    return _buildAimLine(context);
+  }
+
+  // ── Glass bubble ────────────────────────────────────────────────────────────
+  Widget _buildGlassBubble(BuildContext context) {
     final t = event.originServerTs;
     final timeStr = '${t.hour.toString().padLeft(2,'0')}:${t.minute.toString().padLeft(2,'0')}';
 
-    // Timestamps always use a small neutral font — never affected by anyone's prefs.
+    Widget body;
+    if (event.type == EventTypes.Encrypted) {
+      body = Text('🔒 Encrypted',
+        style: const TextStyle(color: Colors.white70, fontStyle: FontStyle.italic, fontSize: 15));
+    } else if (event.messageType == MessageTypes.Image) {
+      body = _buildNetworkImage(context, height: 200);
+    } else {
+      final formattedBody = event.content['formatted_body'] as String?;
+      if (formattedBody != null && formattedBody.isNotEmpty) {
+        final base = const TextStyle(fontSize: 15, color: Colors.white);
+        final spans = htmlToSpans(formattedBody, base);
+        body = RichText(text: TextSpan(children: spans));
+      } else {
+        body = Text(event.body, style: const TextStyle(fontSize: 15, color: Colors.white));
+      }
+    }
+
+    final bubbleBg = isMe
+        ? const LinearGradient(colors: [Color(0xFF6D28D9), Color(0xFF4C1D95)])
+        : const LinearGradient(colors: [Color(0x22FFFFFF), Color(0x14FFFFFF)]);
+
+    final borderRadius = isMe
+        ? const BorderRadius.only(
+            topLeft: Radius.circular(18), topRight: Radius.circular(18),
+            bottomLeft: Radius.circular(18), bottomRight: Radius.circular(4))
+        : const BorderRadius.only(
+            topLeft: Radius.circular(4), topRight: Radius.circular(18),
+            bottomLeft: Radius.circular(18), bottomRight: Radius.circular(18));
+
+    final bubble = Container(
+      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+      decoration: BoxDecoration(gradient: bubbleBg, borderRadius: borderRadius,
+        border: isMe ? null : Border.all(color: Colors.white.withAlpha(30))),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: body,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          if (!isMe)
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 2),
+              child: Text(_senderName,
+                style: const TextStyle(fontSize: 11, color: Colors.white54, fontWeight: FontWeight.w600)),
+            ),
+          bubble,
+          Padding(
+            padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
+            child: Text(timeStr, style: const TextStyle(fontSize: 10, color: Colors.white38)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── AIM flat text layout ────────────────────────────────────────────────────
+  Widget _buildAimLine(BuildContext context) {
+    final nameColor  = isMe ? tc.myNameColor : tc.theirNameColor;
+    final t          = event.originServerTs;
+    final timeStr    = '${t.hour.toString().padLeft(2,'0')}:${t.minute.toString().padLeft(2,'0')}';
+
+    // Timestamps always use a small neutral font
     final timeSpan = TextSpan(
       text: '[$timeStr] ',
       style: TextStyle(fontSize: 11, color: tc.timestampText, fontFamily: 'Arial'),
     );
-
-    // Apply the local user's font only to their OWN messages.
-    // Other people's font is embedded in their formatted_body HTML.
+    // Apply local font prefs only to own messages; default for received
     final bodyFamily = isMe ? myFontFamily : 'Arial';
     final bodySize   = isMe ? myFontSize   : 16.0;
-
-    final nameSpan = TextSpan(
+    final nameSpan   = TextSpan(
       text: '$_senderName: ',
       style: TextStyle(fontFamily: bodyFamily, fontSize: bodySize,
           fontWeight: FontWeight.bold, color: nameColor),
@@ -769,14 +808,21 @@ class _AimMessageLine extends StatelessWidget {
       );
     }
 
-    final msgType = event.messageType;
-    if (msgType == MessageTypes.Image) {
-      return _buildImageMessage(timeSpan, nameSpan, bodyFamily, bodySize);
+    if (event.messageType == MessageTypes.Image) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          RichText(text: TextSpan(children: [timeSpan, nameSpan])),
+          const SizedBox(height: 4),
+          _buildNetworkImage(context, height: 200),
+        ]),
+      );
     }
-    if (msgType == MessageTypes.Audio || msgType == MessageTypes.Video ||
-        msgType == MessageTypes.File) {
-      final label = msgType == MessageTypes.Audio ? '[Audio: ${event.body}]'
-                  : msgType == MessageTypes.Video ? '[Video: ${event.body}]'
+
+    if (event.messageType == MessageTypes.Audio || event.messageType == MessageTypes.Video ||
+        event.messageType == MessageTypes.File) {
+      final label = event.messageType == MessageTypes.Audio ? '[Audio: ${event.body}]'
+                  : event.messageType == MessageTypes.Video ? '[Video: ${event.body}]'
                   : '[File: ${event.body}]';
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
@@ -789,12 +835,10 @@ class _AimMessageLine extends StatelessWidget {
       );
     }
 
-    // Text message — HTML formatted_body carries the sender's chosen font.
-    final format        = event.content['format']         as String?;
+    // Text — HTML carries the sender's formatting; plain messages fall through
     final formattedBody = event.content['formatted_body'] as String?;
-
-    if (format == 'org.matrix.custom.html' && formattedBody != null) {
-      final base = TextStyle(fontFamily: bodyFamily, fontSize: bodySize, color: tc.nameText);
+    if (formattedBody != null && formattedBody.isNotEmpty) {
+      final base  = TextStyle(fontFamily: bodyFamily, fontSize: bodySize, color: tc.nameText);
       final spans = htmlToSpans(formattedBody, base);
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
@@ -802,7 +846,6 @@ class _AimMessageLine extends StatelessWidget {
       );
     }
 
-    // Plain text message — use sender's own font for isMe, default for others.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: RichText(text: TextSpan(children: [
@@ -813,56 +856,58 @@ class _AimMessageLine extends StatelessWidget {
     );
   }
 
-  Widget _buildImageMessage(TextSpan timeSpan, TextSpan nameSpan,
-      String bodyFamily, double bodySize) {
+  // ── Network image with tap-to-enlarge ──────────────────────────────────────
+  Widget _buildNetworkImage(BuildContext context, {required double height}) {
     final client = event.room.client;
-
-    // Matrix image events can carry the MXC URL in two places:
-    //   - event.content['url']        for unencrypted rooms
-    //   - event.content['file']['url'] for E2E-encrypted rooms
     String? mxcUrl;
     final fileMap = event.content['file'];
     if (fileMap is Map) mxcUrl = fileMap['url'] as String?;
     mxcUrl ??= event.content['url'] as String?;
 
-    Widget imageWidget;
-    if (mxcUrl != null && mxcUrl.startsWith('mxc://')) {
-      final mxcUri    = Uri.parse(mxcUrl);
-      final httpUrl   = '${client.homeserver}/_matrix/media/v3/download'
-                        '/${mxcUri.host}${mxcUri.path}';
-      final authToken = client.accessToken ?? '';
-      imageWidget = Image.network(
-        httpUrl,
-        headers: {'Authorization': 'Bearer $authToken'},
-        height: 220,
-        fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => Container(
-          height: 44,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          alignment: Alignment.centerLeft,
-          child: Text('[Image — encrypted or unavailable]',
-            style: TextStyle(fontSize: bodySize, fontStyle: FontStyle.italic,
-              color: tc.previewText, fontFamily: bodyFamily)),
-        ),
-      );
-    } else {
-      imageWidget = Text('[Image]',
-        style: TextStyle(fontSize: bodySize, fontStyle: FontStyle.italic,
-          color: tc.previewText, fontFamily: bodyFamily));
+    if (mxcUrl == null || !mxcUrl.startsWith('mxc://')) {
+      return Text('[Image]', style: TextStyle(fontStyle: FontStyle.italic, color: tc.previewText));
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        RichText(text: TextSpan(children: [timeSpan, nameSpan])),
-        const SizedBox(height: 4),
-        imageWidget,
-      ]),
+    final mxcUri  = Uri.parse(mxcUrl);
+    final httpUrl = '${client.homeserver}/_matrix/media/v3/download/${mxcUri.host}${mxcUri.path}';
+    final token   = client.accessToken ?? '';
+
+    final img = Image.network(
+      httpUrl,
+      headers: {'Authorization': 'Bearer $token'},
+      height: height,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => Text('[Image — encrypted or unavailable]',
+        style: TextStyle(fontSize: 14, fontStyle: FontStyle.italic, color: tc.previewText)),
+    );
+
+    return GestureDetector(
+      onTap: () => showDialog(
+        context: context,
+        barrierColor: Colors.black87,
+        builder: (dialogCtx) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(12),
+          child: Stack(children: [
+            InteractiveViewer(child: Image.network(httpUrl,
+              headers: {'Authorization': 'Bearer $token'},
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Text('[Image unavailable]',
+                style: TextStyle(color: Colors.white)))),
+            Positioned(top: 0, right: 0,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                onPressed: () => Navigator.pop(dialogCtx),
+              )),
+          ]),
+        ),
+      ),
+      child: img,
     );
   }
 }
 
-// ── Chat title bar ─────────────────────────────────────────────────────────────
+// ── Chat title bar ────────────────────────────────────────────────────────────
 class _ChatTitleBar extends StatelessWidget {
   final String title;
   final VeilThemeColors tc;
@@ -872,11 +917,10 @@ class _ChatTitleBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isWide = MediaQuery.of(context).size.width >= 700;
-    final topPad = MediaQuery.of(context).padding.top;
+    final isWide  = MediaQuery.of(context).size.width >= 700;
+    final topPad  = MediaQuery.of(context).padding.top;
     return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [tc.titleStart, tc.titleEnd])),
+      decoration: BoxDecoration(gradient: LinearGradient(colors: [tc.titleStart, tc.titleEnd])),
       padding: EdgeInsets.fromLTRB(8, topPad + 14, 8, 14),
       child: Row(children: [
         if (!isWide)
@@ -897,7 +941,7 @@ class _ChatTitleBar extends StatelessWidget {
   }
 }
 
-// ── Shared widgets ─────────────────────────────────────────────────────────────
+// ── Shared small widgets ──────────────────────────────────────────────────────
 class _MsgMenuTile extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -930,17 +974,15 @@ class _BarBtn extends StatelessWidget {
   const _BarBtn({required this.icon, required this.tooltip, required this.color, this.onTap});
 
   @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Icon(icon, size: 26,
-            color: onTap == null ? color.withAlpha(80) : color),
-        ),
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Icon(icon, size: 26,
+          color: onTap == null ? color.withAlpha(80) : color),
       ),
-    );
-  }
+    ),
+  );
 }
