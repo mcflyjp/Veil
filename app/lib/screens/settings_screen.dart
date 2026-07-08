@@ -21,12 +21,12 @@ class SettingsScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(56),
+        preferredSize: Size.fromHeight(MediaQuery.of(context).padding.top + 64),
         child: AimTitleBar(
           title: 'Preferences',
           isDark: isDark,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, size: 20, color: Colors.white),
+            icon: const Icon(Icons.arrow_back, size: 24, color: Colors.white),
             onPressed: () => context.pop(),
           ),
         ),

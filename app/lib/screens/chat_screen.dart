@@ -284,7 +284,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
         // ── Toolbar strip ─────────────────────────────────────────────
         Container(
-          height: 28,
+          height: 52,
           color: isDark ? const Color(0xFF1A1A1A) : AimColors.toolbarBg,
           padding: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
@@ -325,14 +325,15 @@ class _ChatScreenState extends State<ChatScreen> {
         // ── Input area ────────────────────────────────────────────────
         Container(
           color: isDark ? AimColors.darkInputBg : AimColors.inputBg,
-          padding: const EdgeInsets.all(6),
+          padding: const EdgeInsets.all(10),
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Expanded(
               child: Container(
-                constraints: const BoxConstraints(maxHeight: 120),
+                constraints: const BoxConstraints(maxHeight: 160),
                 decoration: BoxDecoration(
                   color: isDark ? AimColors.darkInputBg : Colors.white,
                   border: Border.all(color: isDark ? AimColors.darkBorder : AimColors.inputBorder),
+                  borderRadius: BorderRadius.circular(4),
                 ),
                 child: TextField(
                   controller: _inputCtrl,
@@ -342,28 +343,28 @@ class _ChatScreenState extends State<ChatScreen> {
                     color: isDark ? AimColors.darkText : Colors.black),
                   decoration: InputDecoration(
                     hintText: 'Type a message...',
-                    hintStyle: TextStyle(fontSize: _fontSize * 0.85,
+                    hintStyle: TextStyle(fontSize: _fontSize,
                       color: isDark ? Colors.grey[600] : Colors.grey[500]),
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.all(6),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   ),
                   onSubmitted: (_) => _sendText(),
                 ),
               ),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 10),
             SizedBox(
-              height: 34,
+              height: 48,
               child: ElevatedButton(
                 onPressed: _sending ? null : _sendText,
                 style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                 ),
                 child: _sending
-                    ? const SizedBox(width: 12, height: 12,
+                    ? const SizedBox(width: 18, height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Send', style: TextStyle(fontSize: 16)),
+                    : const Text('Send', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
             ),
           ]),
@@ -575,27 +576,26 @@ class _ChatTitleBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width >= 700;
+    final topPad = MediaQuery.of(context).padding.top;
     return Container(
-      height: 28,
       decoration: BoxDecoration(gradient: LinearGradient(colors: isDark
           ? [AimColors.darkTitleBar, const Color(0xFF1A3A6A)]
           : [AimColors.titleBarStart, AimColors.titleBarEnd])),
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: EdgeInsets.fromLTRB(8, topPad + 14, 8, 14),
       child: Row(children: [
-        // Hide back button on wide layout — buddy list is always visible
         if (!isWide)
           InkWell(onTap: onBack,
-            child: const Padding(padding: EdgeInsets.all(4),
-              child: Icon(Icons.arrow_back, color: Colors.white, size: 14))),
-        const Icon(Icons.lock, color: Colors.white, size: 12),
-        const SizedBox(width: 4),
+            child: const Padding(padding: EdgeInsets.all(8),
+              child: Icon(Icons.arrow_back, color: Colors.white, size: 24))),
+        const Icon(Icons.lock, color: Colors.white, size: 18),
+        const SizedBox(width: 8),
         Expanded(child: Text('Veil — $title',
-          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
           overflow: TextOverflow.ellipsis)),
         if (onTimer != null)
           InkWell(onTap: onTimer,
-            child: const Padding(padding: EdgeInsets.all(4),
-              child: Icon(Icons.timer_outlined, color: Colors.white, size: 14))),
+            child: const Padding(padding: EdgeInsets.all(8),
+              child: Icon(Icons.timer_outlined, color: Colors.white, size: 24))),
       ]),
     );
   }
@@ -639,8 +639,8 @@ class _BarBtn extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          child: Icon(icon, size: 16,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Icon(icon, size: 26,
             color: onTap == null ? Colors.grey : (isDark ? Colors.grey[300] : Colors.black87)),
         ),
       ),

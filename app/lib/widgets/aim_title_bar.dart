@@ -17,8 +17,8 @@ class AimTitleBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top;
     return Container(
-      height: 48,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDark
@@ -26,27 +26,25 @@ class AimTitleBar extends StatelessWidget {
               : [AimColors.aimTitleBar, AimColors.aimTitleBarEnd],
         ),
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Row(
-          children: [
-            if (leading != null) leading!,
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontFamily: 'Arial',
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-                overflow: TextOverflow.ellipsis,
+      padding: EdgeInsets.fromLTRB(4, topPad + 12, 4, 12),
+      child: Row(
+        children: [
+          if (leading != null) leading!,
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontFamily: 'Arial',
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
+              overflow: TextOverflow.ellipsis,
             ),
-            if (actions != null) ...actions!,
-          ],
-        ),
+          ),
+          if (actions != null) ...actions!,
+        ],
       ),
     );
   }
