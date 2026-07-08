@@ -103,25 +103,38 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendImage() async {
+    // Capture room before the async gap — context.read is unsafe after awaits.
+    final room = _room;
+    if (room == null) return;
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
-    if (picked == null || _room == null) return;
+    if (picked == null) return;
     setState(() => _sending = true);
     try {
       final bytes = await picked.readAsBytes();
-      await _room!.sendFileEvent(MatrixFile(bytes: bytes, name: picked.name, mimeType: 'image/jpeg'));
+      final ext  = picked.name.split('.').last.toLowerCase();
+      final mime = ext == 'png' ? 'image/png' : ext == 'gif' ? 'image/gif' : 'image/jpeg';
+      await room.sendFileEvent(MatrixFile(bytes: bytes, name: picked.name, mimeType: mime));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send image: $e'), duration: const Duration(seconds: 4)));
     } finally { if (mounted) setState(() => _sending = false); }
   }
 
   Future<void> _sendFile() async {
+    final room = _room;
+    if (room == null) return;
     final result = await FilePicker.platform.pickFiles(withData: true);
-    if (result == null || result.files.isEmpty || _room == null) return;
+    if (result == null || result.files.isEmpty) return;
     final file = result.files.first;
     if (file.bytes == null) return;
     setState(() => _sending = true);
     try {
-      await _room!.sendFileEvent(MatrixFile(
+      await room.sendFileEvent(MatrixFile(
         bytes: file.bytes!, name: file.name,
         mimeType: file.extension != null ? 'application/${file.extension}' : 'application/octet-stream'));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send file: $e'), duration: const Duration(seconds: 4)));
     } finally { if (mounted) setState(() => _sending = false); }
   }
 
@@ -686,13 +699,20 @@ class _AimMessageLine extends StatelessWidget {
     final t = event.originServerTs;
     final timeStr = '${t.hour.toString().padLeft(2,'0')}:${t.minute.toString().padLeft(2,'0')}';
 
+    // Timestamps always use a small neutral font — never affected by anyone's prefs.
     final timeSpan = TextSpan(
       text: '[$timeStr] ',
-      style: TextStyle(fontSize: myFontSize * 0.75, color: tc.timestampText, fontFamily: myFontFamily),
+      style: TextStyle(fontSize: 11, color: tc.timestampText, fontFamily: 'Arial'),
     );
+
+    // Apply the local user's font only to their OWN messages.
+    // Other people's font is embedded in their formatted_body HTML.
+    final bodyFamily = isMe ? myFontFamily : 'Arial';
+    final bodySize   = isMe ? myFontSize   : 16.0;
+
     final nameSpan = TextSpan(
       text: '$_senderName: ',
-      style: TextStyle(fontFamily: myFontFamily, fontSize: myFontSize,
+      style: TextStyle(fontFamily: bodyFamily, fontSize: bodySize,
           fontWeight: FontWeight.bold, color: nameColor),
     );
 
@@ -702,7 +722,7 @@ class _AimMessageLine extends StatelessWidget {
         child: RichText(text: TextSpan(children: [
           timeSpan, nameSpan,
           TextSpan(text: '🔒 Encrypted',
-            style: TextStyle(fontFamily: myFontFamily, fontSize: myFontSize,
+            style: TextStyle(fontFamily: bodyFamily, fontSize: bodySize,
               color: tc.previewText, fontStyle: FontStyle.italic)),
         ])),
       );
@@ -720,19 +740,18 @@ class _AimMessageLine extends StatelessWidget {
         child: RichText(text: TextSpan(children: [
           timeSpan, nameSpan,
           TextSpan(text: label,
-            style: TextStyle(fontFamily: myFontFamily, fontSize: myFontSize,
+            style: TextStyle(fontFamily: bodyFamily, fontSize: bodySize,
               color: tc.previewText, fontStyle: FontStyle.italic)),
         ])),
       );
     }
 
-    // Text message — check for HTML formatted_body from sender's font prefs
+    // Text message — HTML formatted_body carries the sender's chosen font.
     final format        = event.content['format']         as String?;
     final formattedBody = event.content['formatted_body'] as String?;
 
     if (format == 'org.matrix.custom.html' && formattedBody != null) {
-      final base = TextStyle(
-          fontFamily: myFontFamily, fontSize: myFontSize, color: tc.nameText);
+      final base = TextStyle(fontFamily: bodyFamily, fontSize: bodySize, color: tc.nameText);
       final spans = htmlToSpans(formattedBody, base);
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
@@ -740,12 +759,13 @@ class _AimMessageLine extends StatelessWidget {
       );
     }
 
+    // Plain text message — use sender's own font for isMe, default for others.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: RichText(text: TextSpan(children: [
         timeSpan, nameSpan,
         TextSpan(text: event.body,
-          style: TextStyle(fontFamily: myFontFamily, fontSize: myFontSize, color: tc.nameText)),
+          style: TextStyle(fontFamily: bodyFamily, fontSize: bodySize, color: tc.nameText)),
       ])),
     );
   }
