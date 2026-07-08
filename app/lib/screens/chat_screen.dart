@@ -5,18 +5,18 @@ import 'package:matrix/matrix.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
 import '../core/disappearing_message_service.dart';
 import '../core/notification_service.dart';
+import '../core/html_span.dart';
+import '../core/veil_theme.dart';
+import '../core/veil_user_prefs.dart';
 import '../widgets/disappearing_timer_dialog.dart';
 
 // Available AIM-era fonts
 const _kFonts = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Comic Sans MS', 'Georgia'];
 const _kSizes = [14.0, 16.0, 18.0, 20.0, 22.0, 24.0];
-const _kDefaultFont = 'Arial';
-const _kDefaultSize = 16.0;
 
 class ChatScreen extends StatefulWidget {
   final String roomId;
@@ -33,12 +33,6 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _loadingTimeline = true;
   bool _sending = false;
 
-  // Per-conversation font prefs
-  String _fontFamily = _kDefaultFont;
-  double _fontSize   = _kDefaultSize;
-
-  String get _prefKey => 'chat_font_${widget.roomId}';
-
   Room? get _room =>
       context.read<ClientManager>().roomById(Uri.decodeComponent(widget.roomId));
 
@@ -46,7 +40,6 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     NotificationService.instance.activeRoomId = Uri.decodeComponent(widget.roomId);
-    _loadPrefs();
     _loadTimeline();
   }
 
@@ -59,20 +52,6 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  Future<void> _loadPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _fontFamily = prefs.getString('${_prefKey}_family') ?? _kDefaultFont;
-      _fontSize   = prefs.getDouble('${_prefKey}_size')   ?? _kDefaultSize;
-    });
-  }
-
-  Future<void> _savePrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('${_prefKey}_family', _fontFamily);
-    await prefs.setDouble('${_prefKey}_size', _fontSize);
-  }
-
   Future<void> _loadTimeline() async {
     final room = _room;
     if (room == null) return;
@@ -81,13 +60,46 @@ class _ChatScreenState extends State<ChatScreen> {
     await timeline.requestHistory(historyCount: 50);
   }
 
-  Future<void> _sendText() async {
+  /// Builds HTML-formatted body from the current text + user font prefs.
+  /// Returns null when no formatting is active (plain message stays plain).
+  String? _buildHtml(String text, VeilUserPrefs prefs) {
+    final hasFormatting = prefs.bold || prefs.italic || prefs.underline
+        || prefs.fontFamily != 'Arial'
+        || prefs.fontSize   != 16.0;
+    if (!hasFormatting) return null;
+
+    var escaped = text
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('\n', '<br>');
+
+    var html = escaped;
+    if (prefs.underline) html = '<u>$html</u>';
+    if (prefs.italic)    html = '<i>$html</i>';
+    if (prefs.bold)      html = '<b>$html</b>';
+    return '<font face="${prefs.fontFamily}" data-pt="${prefs.fontSize.toInt()}">$html</font>';
+  }
+
+  Future<void> _sendText(VeilUserPrefs prefs) async {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty || _room == null) return;
     _inputCtrl.clear();
     setState(() => _sending = true);
-    try { await _room!.sendTextEvent(text); }
-    finally { if (mounted) setState(() => _sending = false); }
+    try {
+      final html = _buildHtml(text, prefs);
+      final content = <String, dynamic>{
+        'msgtype': MessageTypes.Text,
+        'body': text,
+        if (html != null) ...{
+          'format': 'org.matrix.custom.html',
+          'formatted_body': html,
+        },
+      };
+      await _room!.sendEvent(content);
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 
   Future<void> _sendImage() async {
@@ -125,12 +137,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _showMessageMenu(BuildContext ctx, Event event) async {
     final room = _room;
     if (room == null) return;
-    final isDark = Theme.of(ctx).brightness == Brightness.dark;
+    final tc = context.read<VeilUserPrefs>().colors;
     final isText = event.messageType == MessageTypes.Text;
 
     await showModalBottomSheet(
       context: ctx,
-      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+      backgroundColor: tc.inputBg,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       builder: (_) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -138,6 +150,7 @@ class _ChatScreenState extends State<ChatScreen> {
             _MsgMenuTile(
               icon: Icons.copy,
               label: 'Copy text',
+              color: tc.nameText,
               onTap: () {
                 Navigator.pop(ctx);
                 Clipboard.setData(ClipboardData(text: event.body));
@@ -148,6 +161,7 @@ class _ChatScreenState extends State<ChatScreen> {
           _MsgMenuTile(
             icon: Icons.timer_outlined,
             label: 'Disappear in…',
+            color: tc.nameText,
             onTap: () async {
               Navigator.pop(ctx);
               await _pickDisappearTimer(ctx, event, room);
@@ -207,15 +221,23 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _openFontPicker() {
+  void _openFontPicker(VeilUserPrefs prefs) {
     showDialog(
       context: context,
       builder: (_) => _FontPickerDialog(
-        currentFamily: _fontFamily,
-        currentSize: _fontSize,
-        onChanged: (family, size) {
-          setState(() { _fontFamily = family; _fontSize = size; });
-          _savePrefs();
+        currentFamily:    prefs.fontFamily,
+        currentSize:      prefs.fontSize,
+        currentBold:      prefs.bold,
+        currentItalic:    prefs.italic,
+        currentUnderline: prefs.underline,
+        onChanged: (family, size, bold, italic, underline) {
+          prefs.setFont(
+            family:    family,
+            size:      size,
+            bold:      bold,
+            italic:    italic,
+            underline: underline,
+          );
         },
       ),
     );
@@ -223,153 +245,227 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final mgr = context.watch<ClientManager>();
-    final room = mgr.roomById(Uri.decodeComponent(widget.roomId));
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final myId = mgr.client.userID ?? '';
+    final mgr   = context.watch<ClientManager>();
+    final prefs = context.watch<VeilUserPrefs>();
+    final tc    = prefs.colors;
+    final room  = mgr.roomById(Uri.decodeComponent(widget.roomId));
+    final myId  = mgr.client.userID ?? '';
 
     if (room == null) {
-      return Scaffold(
-        body: Column(children: [
-          _ChatTitleBar(title: 'Chat', isDark: isDark, onBack: () => context.go('/buddylist')),
-          const Expanded(child: Center(child: Text('Room not found'))),
-        ]),
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) context.go('/buddylist');
+        },
+        child: Scaffold(
+          body: Column(children: [
+            _ChatTitleBar(title: 'Chat', tc: tc, onBack: () => context.go('/buddylist')),
+            Expanded(child: Container(
+              color: tc.chatBg,
+              child: const Center(child: Text('Room not found')),
+            )),
+          ]),
+        ),
       );
     }
 
-    // events are newest-first from the SDK; reverse: true puts index-0 at bottom
     final events = _timeline?.events ?? [];
     final msgEvents = events
         .where((e) => e.type == EventTypes.Message || e.type == EventTypes.Encrypted)
         .toList();
 
-    return Scaffold(
-      body: Column(children: [
-        _ChatTitleBar(
-          title: room.getLocalizedDisplayname(),
-          isDark: isDark,
-          onBack: () => context.go('/buddylist'),
-          onTimer: _setDisappearing,
-        ),
+    final toolbarBorderColor = tc.divider == Colors.transparent
+        ? tc.scaffold.withAlpha(60)
+        : tc.divider;
+    final toolbarBorder = BorderSide(color: toolbarBorderColor);
 
-        // ── Message area ───────────────────────────────────────────────
-        Expanded(
-          child: Container(
-            color: isDark ? AimColors.darkChatBg : AimColors.chatBg,
-            child: _loadingTimeline
-                ? const Center(child: CircularProgressIndicator())
-                : msgEvents.isEmpty
-                    ? Center(child: Text('No messages yet. Say something!',
-                        style: TextStyle(fontSize: 16,
-                          color: isDark ? Colors.grey[500] : Colors.grey[600])))
-                    : ListView.builder(
-                        controller: _scrollCtrl,
-                        reverse: true,          // newest (index 0) at bottom ✓
-                        padding: const EdgeInsets.all(8),
-                        itemCount: msgEvents.length,
-                        itemBuilder: (_, i) {
-                          final event = msgEvents[i];
-                          final isMe = event.senderId == myId;
-                          return GestureDetector(
-                            onLongPress: () => _showMessageMenu(context, event),
-                            child: _AimMessageLine(
-                              event: event, isMe: isMe, isDark: isDark,
-                              fontFamily: _fontFamily, fontSize: _fontSize,
-                            ),
-                          );
-                        },
-                      ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) context.go('/buddylist');
+      },
+      child: Scaffold(
+        body: Column(children: [
+          _ChatTitleBar(
+            title: room.getLocalizedDisplayname(),
+            tc: tc,
+            onBack: () => context.go('/buddylist'),
+            onTimer: _setDisappearing,
           ),
-        ),
 
-        // ── Toolbar strip ─────────────────────────────────────────────
-        Container(
-          height: 52,
-          color: isDark ? const Color(0xFF1A1A1A) : AimColors.toolbarBg,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          decoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(color: isDark ? AimColors.darkBorder : AimColors.winBorder),
-              bottom: BorderSide(color: isDark ? AimColors.darkBorder : AimColors.winBorder),
+          // ── Message area ─────────────────────────────────────────────
+          Expanded(
+            child: Container(
+              color: tc.chatBg,
+              child: _loadingTimeline
+                  ? Center(child: CircularProgressIndicator(color: tc.toolbarActive))
+                  : msgEvents.isEmpty
+                      ? Center(child: Text('No messages yet. Say something!',
+                          style: TextStyle(fontSize: 16, color: tc.previewText)))
+                      : ListView.builder(
+                          controller: _scrollCtrl,
+                          reverse: true,
+                          padding: const EdgeInsets.all(8),
+                          itemCount: msgEvents.length,
+                          itemBuilder: (_, i) {
+                            final event = msgEvents[i];
+                            final isMe = event.senderId == myId;
+                            return GestureDetector(
+                              onLongPress: () => _showMessageMenu(context, event),
+                              child: _AimMessageLine(
+                                event: event, isMe: isMe, tc: tc,
+                                myFontFamily: prefs.fontFamily,
+                                myFontSize:   prefs.fontSize,
+                              ),
+                            );
+                          },
+                        ),
             ),
           ),
-          child: Row(children: [
-            _BarBtn(icon: Icons.image_outlined, tooltip: 'Send image', onTap: _sending ? null : _sendImage),
-            _BarBtn(icon: Icons.attach_file, tooltip: 'Send file', onTap: _sending ? null : _sendFile),
-            _BarBtn(icon: Icons.timer_outlined, tooltip: 'Disappearing messages', onTap: _setDisappearing),
-            const SizedBox(width: 4),
-            // Font button — shows current font info
-            InkWell(
-              onTap: _openFontPicker,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  border: Border.all(color: isDark ? AimColors.darkBorder : AimColors.winBorder),
-                  color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text('A', style: TextStyle(
-                    fontFamily: _fontFamily, fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? AimColors.darkText : Colors.black)),
-                  const SizedBox(width: 4),
-                  Text('$_fontFamily · ${_fontSize.toInt()}pt',
-                    style: TextStyle(fontSize: 14,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600])),
-                ]),
-              ),
-            ),
-          ]),
-        ),
 
-        // ── Input area ────────────────────────────────────────────────
-        Container(
-          color: isDark ? AimColors.darkInputBg : AimColors.inputBg,
-          padding: const EdgeInsets.all(10),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Expanded(
-              child: Container(
-                constraints: const BoxConstraints(maxHeight: 160),
-                decoration: BoxDecoration(
-                  color: isDark ? AimColors.darkInputBg : Colors.white,
-                  border: Border.all(color: isDark ? AimColors.darkBorder : AimColors.inputBorder),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: TextField(
-                  controller: _inputCtrl,
-                  maxLines: null,
-                  textInputAction: TextInputAction.newline,
-                  style: TextStyle(fontFamily: _fontFamily, fontSize: _fontSize,
-                    color: isDark ? AimColors.darkText : Colors.black),
-                  decoration: InputDecoration(
-                    hintText: 'Type a message...',
-                    hintStyle: TextStyle(fontSize: _fontSize,
-                      color: isDark ? Colors.grey[600] : Colors.grey[500]),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          // ── Formatting toolbar ────────────────────────────────────────
+          Container(
+            height: 52,
+            color: tc.toolbarBg,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              border: Border(top: toolbarBorder, bottom: toolbarBorder),
+            ),
+            child: Row(children: [
+              _BarBtn(icon: Icons.image_outlined, tooltip: 'Send image',
+                  color: tc.toolbarText, onTap: _sending ? null : _sendImage),
+              _BarBtn(icon: Icons.attach_file, tooltip: 'Send file',
+                  color: tc.toolbarText, onTap: _sending ? null : _sendFile),
+              _BarBtn(icon: Icons.timer_outlined, tooltip: 'Disappearing messages',
+                  color: tc.toolbarText, onTap: _setDisappearing),
+              const SizedBox(width: 4),
+              // Font family + size picker
+              InkWell(
+                onTap: () => _openFontPicker(prefs),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: toolbarBorderColor),
+                    color: tc.inputBg.withAlpha(180),
                   ),
-                  onSubmitted: (_) => _sendText(),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text('A', style: TextStyle(
+                      fontFamily: prefs.fontFamily, fontSize: 16,
+                      fontWeight: FontWeight.bold, color: tc.nameText)),
+                    const SizedBox(width: 4),
+                    Text('${prefs.fontFamily} · ${prefs.fontSize.toInt()}pt',
+                      style: TextStyle(fontSize: 13, color: tc.previewText)),
+                  ]),
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              height: 48,
-              child: ElevatedButton(
-                onPressed: _sending ? null : _sendText,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+              const SizedBox(width: 6),
+              _FormatToggle(label: 'B', active: prefs.bold,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                tc: tc, onTap: () => prefs.setFont(bold: !prefs.bold)),
+              const SizedBox(width: 3),
+              _FormatToggle(label: 'I', active: prefs.italic,
+                style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 15),
+                tc: tc, onTap: () => prefs.setFont(italic: !prefs.italic)),
+              const SizedBox(width: 3),
+              _FormatToggle(label: 'U', active: prefs.underline,
+                style: const TextStyle(decoration: TextDecoration.underline, fontSize: 15),
+                tc: tc, onTap: () => prefs.setFont(underline: !prefs.underline)),
+            ]),
+          ),
+
+          // ── Input area ────────────────────────────────────────────────
+          Container(
+            color: tc.inputBg,
+            padding: const EdgeInsets.all(10),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Expanded(
+                child: Container(
+                  constraints: const BoxConstraints(maxHeight: 160),
+                  decoration: BoxDecoration(
+                    color: tc.inputBg,
+                    border: Border.all(color: toolbarBorderColor),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: TextField(
+                    controller: _inputCtrl,
+                    maxLines: null,
+                    textInputAction: TextInputAction.newline,
+                    style: TextStyle(
+                      fontFamily:  prefs.fontFamily,
+                      fontSize:    prefs.fontSize,
+                      fontWeight:  prefs.bold      ? FontWeight.bold   : FontWeight.normal,
+                      fontStyle:   prefs.italic    ? FontStyle.italic  : FontStyle.normal,
+                      decoration:  prefs.underline ? TextDecoration.underline : TextDecoration.none,
+                      color: tc.nameText,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Type a message...',
+                      hintStyle: TextStyle(fontSize: prefs.fontSize, color: tc.previewText),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    onSubmitted: (_) => _sendText(prefs),
+                  ),
                 ),
-                child: _sending
-                    ? const SizedBox(width: 18, height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Send', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
-            ),
-          ]),
+              const SizedBox(width: 10),
+              SizedBox(
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: _sending ? null : () => _sendText(prefs),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: tc.badgeBg,
+                    foregroundColor: tc.badgeText,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                  ),
+                  child: _sending
+                      ? SizedBox(width: 18, height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: tc.badgeText))
+                      : const Text('Send', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+// ── B / I / U toggle button ────────────────────────────────────────────────────
+class _FormatToggle extends StatelessWidget {
+  final String label;
+  final bool active;
+  final TextStyle style;
+  final VeilThemeColors tc;
+  final VoidCallback onTap;
+
+  const _FormatToggle({
+    required this.label, required this.active, required this.style,
+    required this.tc, required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final activeColor = tc.toolbarActive;
+    final borderColor = tc.divider == Colors.transparent
+        ? tc.scaffold.withAlpha(60) : tc.divider;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 30, height: 30,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active ? activeColor : tc.inputBg.withAlpha(180),
+          border: Border.all(color: active ? activeColor : borderColor),
         ),
-      ]),
+        child: Text(label,
+          style: style.copyWith(
+            fontFamily: 'Arial',
+            color: active ? tc.badgeText : tc.toolbarText,
+          )),
+      ),
     );
   }
 }
@@ -378,11 +474,17 @@ class _ChatScreenState extends State<ChatScreen> {
 class _FontPickerDialog extends StatefulWidget {
   final String currentFamily;
   final double currentSize;
-  final void Function(String family, double size) onChanged;
+  final bool currentBold;
+  final bool currentItalic;
+  final bool currentUnderline;
+  final void Function(String family, double size, bool bold, bool italic, bool underline) onChanged;
 
   const _FontPickerDialog({
     required this.currentFamily,
     required this.currentSize,
+    required this.currentBold,
+    required this.currentItalic,
+    required this.currentUnderline,
     required this.onChanged,
   });
 
@@ -393,97 +495,130 @@ class _FontPickerDialog extends StatefulWidget {
 class _FontPickerDialogState extends State<_FontPickerDialog> {
   late String _family;
   late double _size;
+  late bool   _bold;
+  late bool   _italic;
+  late bool   _underline;
 
   @override
   void initState() {
     super.initState();
-    _family = widget.currentFamily;
-    _size   = widget.currentSize;
+    _family    = widget.currentFamily;
+    _size      = widget.currentSize;
+    _bold      = widget.currentBold;
+    _italic    = widget.currentItalic;
+    _underline = widget.currentUnderline;
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tc = context.read<VeilUserPrefs>().colors;
+    final activeColor = tc.toolbarActive;
+    final borderColor = tc.divider == Colors.transparent
+        ? tc.scaffold.withAlpha(80) : tc.divider;
+
     return AlertDialog(
-      title: const Text('Font Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      backgroundColor: tc.inputBg,
+      title: Text('Font Settings',
+        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: tc.nameText)),
       contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       content: SizedBox(
         width: 300,
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Font', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text('Font', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: tc.nameText)),
           const SizedBox(height: 4),
           Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: isDark ? AimColors.darkBorder : AimColors.winBorder)),
+            decoration: BoxDecoration(border: Border.all(color: borderColor)),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 value: _family,
                 isExpanded: true,
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                style: TextStyle(fontSize: 16, color: isDark ? AimColors.darkText : Colors.black),
-                dropdownColor: isDark ? AimColors.darkInputBg : Colors.white,
+                style: TextStyle(fontSize: 16, color: tc.nameText),
+                dropdownColor: tc.inputBg,
                 items: _kFonts.map((f) => DropdownMenuItem(
                   value: f,
-                  child: Text(f, style: TextStyle(fontFamily: f, fontSize: 16)),
+                  child: Text(f, style: TextStyle(fontFamily: f, fontSize: 16, color: tc.nameText)),
                 )).toList(),
                 onChanged: (v) => setState(() => _family = v!),
               ),
             ),
           ),
           const SizedBox(height: 12),
-          const Text('Size', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text('Size', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: tc.nameText)),
           const SizedBox(height: 4),
           Wrap(
             spacing: 8, runSpacing: 8,
             children: _kSizes.map((s) {
-              final selected = s == _size;
+              final sel = s == _size;
               return GestureDetector(
                 onTap: () => setState(() => _size = s),
                 child: Container(
                   width: 44, height: 36,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: selected
-                        ? const Color(0xFF17369C)
-                        : (isDark ? AimColors.darkInputBg : Colors.white),
-                    border: Border.all(
-                      color: selected
-                          ? const Color(0xFF17369C)
-                          : (isDark ? AimColors.darkBorder : AimColors.winBorder)),
+                    color: sel ? activeColor : tc.inputBg,
+                    border: Border.all(color: sel ? activeColor : borderColor),
                   ),
                   child: Text('${s.toInt()}',
                     style: TextStyle(fontSize: 14,
-                      color: selected ? Colors.white : (isDark ? AimColors.darkText : Colors.black),
-                      fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
+                      color: sel ? tc.badgeText : tc.nameText,
+                      fontWeight: sel ? FontWeight.bold : FontWeight.normal)),
                 ),
               );
             }).toList(),
           ),
+          const SizedBox(height: 12),
+          Text('Style', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: tc.nameText)),
+          const SizedBox(height: 6),
+          Row(children: [
+            _DialogToggle(label: 'B', active: _bold, tc: tc,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              onTap: () => setState(() => _bold = !_bold)),
+            const SizedBox(width: 6),
+            _DialogToggle(label: 'I', active: _italic, tc: tc,
+              style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 15),
+              onTap: () => setState(() => _italic = !_italic)),
+            const SizedBox(width: 6),
+            _DialogToggle(label: 'U', active: _underline, tc: tc,
+              style: const TextStyle(decoration: TextDecoration.underline, fontSize: 15),
+              onTap: () => setState(() => _underline = !_underline)),
+          ]),
           const SizedBox(height: 12),
           // Live preview
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: isDark ? AimColors.darkChatBg : Colors.white,
-              border: Border.all(color: isDark ? AimColors.darkBorder : AimColors.winBorder)),
+              color: tc.chatBg,
+              border: Border.all(color: borderColor)),
             child: RichText(text: TextSpan(children: [
               TextSpan(text: 'You: ',
                 style: TextStyle(fontFamily: _family, fontSize: _size,
-                  fontWeight: FontWeight.bold, color: AimColors.myNameColor)),
+                  fontWeight: FontWeight.bold, color: tc.myNameColor)),
               TextSpan(text: 'hey, how are you?',
-                style: TextStyle(fontFamily: _family, fontSize: _size,
-                  color: isDark ? AimColors.darkText : AimColors.msgTextColor)),
+                style: TextStyle(
+                  fontFamily:  _family,
+                  fontSize:    _size,
+                  fontWeight:  _bold      ? FontWeight.bold   : FontWeight.normal,
+                  fontStyle:   _italic    ? FontStyle.italic  : FontStyle.normal,
+                  decoration:  _underline ? TextDecoration.underline : TextDecoration.none,
+                  color: tc.nameText,
+                )),
             ])),
           ),
           const SizedBox(height: 12),
         ]),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Cancel', style: TextStyle(color: tc.previewText)),
+        ),
         ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: tc.badgeBg, foregroundColor: tc.badgeText),
           onPressed: () {
-            widget.onChanged(_family, _size);
+            widget.onChanged(_family, _size, _bold, _italic, _underline);
             Navigator.pop(context);
           },
           child: const Text('Apply'),
@@ -493,17 +628,53 @@ class _FontPickerDialogState extends State<_FontPickerDialog> {
   }
 }
 
+class _DialogToggle extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VeilThemeColors tc;
+  final TextStyle style;
+  final VoidCallback onTap;
+
+  const _DialogToggle({
+    required this.label, required this.active, required this.tc,
+    required this.style, required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final activeColor = tc.toolbarActive;
+    final borderColor = tc.divider == Colors.transparent
+        ? tc.scaffold.withAlpha(80) : tc.divider;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 36, height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active ? activeColor : tc.inputBg,
+          border: Border.all(color: active ? activeColor : borderColor),
+        ),
+        child: Text(label,
+          style: style.copyWith(
+            fontFamily: 'Arial',
+            color: active ? tc.badgeText : tc.nameText,
+          )),
+      ),
+    );
+  }
+}
+
 // ── AIM-style message line ─────────────────────────────────────────────────────
 class _AimMessageLine extends StatelessWidget {
   final Event event;
   final bool isMe;
-  final bool isDark;
-  final String fontFamily;
-  final double fontSize;
+  final VeilThemeColors tc;
+  final String myFontFamily;
+  final double myFontSize;
 
   const _AimMessageLine({
-    required this.event, required this.isMe, required this.isDark,
-    required this.fontFamily, required this.fontSize,
+    required this.event, required this.isMe, required this.tc,
+    required this.myFontFamily, required this.myFontSize,
   });
 
   String get _senderName =>
@@ -511,96 +682,111 @@ class _AimMessageLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final nameColor = isMe
-        ? (isDark ? AimColors.darkMyName    : AimColors.myNameColor)
-        : (isDark ? AimColors.darkTheirName : AimColors.theirNameColor);
-    final textColor = isDark ? AimColors.darkText : AimColors.msgTextColor;
+    final nameColor = isMe ? tc.myNameColor : tc.theirNameColor;
     final t = event.originServerTs;
     final timeStr = '${t.hour.toString().padLeft(2,'0')}:${t.minute.toString().padLeft(2,'0')}';
+
+    final timeSpan = TextSpan(
+      text: '[$timeStr] ',
+      style: TextStyle(fontSize: myFontSize * 0.75, color: tc.timestampText, fontFamily: myFontFamily),
+    );
+    final nameSpan = TextSpan(
+      text: '$_senderName: ',
+      style: TextStyle(fontFamily: myFontFamily, fontSize: myFontSize,
+          fontWeight: FontWeight.bold, color: nameColor),
+    );
 
     if (event.type == EventTypes.Encrypted) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
         child: RichText(text: TextSpan(children: [
-          TextSpan(text: '[$timeStr] ',
-            style: TextStyle(fontSize: fontSize * 0.75, color: Colors.grey[500], fontFamily: fontFamily)),
-          TextSpan(text: '$_senderName: ',
-            style: TextStyle(fontFamily: fontFamily, fontSize: fontSize, fontWeight: FontWeight.bold, color: nameColor)),
+          timeSpan, nameSpan,
           TextSpan(text: '🔒 Encrypted',
-            style: TextStyle(fontFamily: fontFamily, fontSize: fontSize, color: Colors.grey[500], fontStyle: FontStyle.italic)),
+            style: TextStyle(fontFamily: myFontFamily, fontSize: myFontSize,
+              color: tc.previewText, fontStyle: FontStyle.italic)),
         ])),
       );
     }
 
     final msgType = event.messageType;
-    String displayText;
-    if (msgType == MessageTypes.Image) {
-      displayText = '[Image: ${event.body}]';
-    } else if (msgType == MessageTypes.Audio) {
-      displayText = '[Audio: ${event.body}]';
-    } else if (msgType == MessageTypes.Video) {
-      displayText = '[Video: ${event.body}]';
-    } else if (msgType == MessageTypes.File) {
-      displayText = '[File: ${event.body}]';
-    } else {
-      displayText = event.body;
+    if (msgType == MessageTypes.Image || msgType == MessageTypes.Audio ||
+        msgType == MessageTypes.Video || msgType == MessageTypes.File) {
+      final label = msgType == MessageTypes.Image ? '[Image]'
+                  : msgType == MessageTypes.Audio ? '[Audio]'
+                  : msgType == MessageTypes.Video ? '[Video]'
+                  : '[File: ${event.body}]';
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: RichText(text: TextSpan(children: [
+          timeSpan, nameSpan,
+          TextSpan(text: label,
+            style: TextStyle(fontFamily: myFontFamily, fontSize: myFontSize,
+              color: tc.previewText, fontStyle: FontStyle.italic)),
+        ])),
+      );
     }
 
-    final isAttachment = msgType != MessageTypes.Text && msgType != MessageTypes.Notice;
+    // Text message — check for HTML formatted_body from sender's font prefs
+    final format        = event.content['format']         as String?;
+    final formattedBody = event.content['formatted_body'] as String?;
+
+    if (format == 'org.matrix.custom.html' && formattedBody != null) {
+      final base = TextStyle(
+          fontFamily: myFontFamily, fontSize: myFontSize, color: tc.nameText);
+      final spans = htmlToSpans(formattedBody, base);
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: RichText(text: TextSpan(children: [timeSpan, nameSpan, ...spans])),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: RichText(text: TextSpan(children: [
-        TextSpan(text: '[$timeStr] ',
-          style: TextStyle(fontSize: fontSize * 0.75, color: Colors.grey[500], fontFamily: fontFamily)),
-        TextSpan(text: '$_senderName: ',
-          style: TextStyle(fontFamily: fontFamily, fontSize: fontSize, fontWeight: FontWeight.bold, color: nameColor)),
-        TextSpan(text: displayText,
-          style: TextStyle(
-            fontFamily: fontFamily, fontSize: fontSize,
-            color: isAttachment ? Colors.grey[600] : textColor,
-            fontStyle: isAttachment ? FontStyle.italic : FontStyle.normal)),
+        timeSpan, nameSpan,
+        TextSpan(text: event.body,
+          style: TextStyle(fontFamily: myFontFamily, fontSize: myFontSize, color: tc.nameText)),
       ])),
     );
   }
 }
 
-// ── Shared widgets ─────────────────────────────────────────────────────────────
+// ── Chat title bar ─────────────────────────────────────────────────────────────
 class _ChatTitleBar extends StatelessWidget {
   final String title;
-  final bool isDark;
+  final VeilThemeColors tc;
   final VoidCallback onBack;
   final VoidCallback? onTimer;
-  const _ChatTitleBar({required this.title, required this.isDark, required this.onBack, this.onTimer});
+  const _ChatTitleBar({required this.title, required this.tc, required this.onBack, this.onTimer});
 
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width >= 700;
     final topPad = MediaQuery.of(context).padding.top;
     return Container(
-      decoration: BoxDecoration(gradient: LinearGradient(colors: isDark
-          ? [AimColors.darkTitleBar, const Color(0xFF1A3A6A)]
-          : [AimColors.titleBarStart, AimColors.titleBarEnd])),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [tc.titleStart, tc.titleEnd])),
       padding: EdgeInsets.fromLTRB(8, topPad + 14, 8, 14),
       child: Row(children: [
         if (!isWide)
           InkWell(onTap: onBack,
-            child: const Padding(padding: EdgeInsets.all(8),
-              child: Icon(Icons.arrow_back, color: Colors.white, size: 24))),
-        const Icon(Icons.lock, color: Colors.white, size: 18),
+            child: Padding(padding: const EdgeInsets.all(8),
+              child: Icon(Icons.arrow_back, color: tc.titleOnColor, size: 24))),
+        Icon(Icons.lock, color: tc.titleOnColor.withAlpha(200), size: 18),
         const SizedBox(width: 8),
         Expanded(child: Text('Veil — $title',
-          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          style: TextStyle(color: tc.titleOnColor, fontSize: 18, fontWeight: FontWeight.bold),
           overflow: TextOverflow.ellipsis)),
         if (onTimer != null)
           InkWell(onTap: onTimer,
-            child: const Padding(padding: EdgeInsets.all(8),
-              child: Icon(Icons.timer_outlined, color: Colors.white, size: 24))),
+            child: Padding(padding: const EdgeInsets.all(8),
+              child: Icon(Icons.timer_outlined, color: tc.titleOnColor, size: 24))),
       ]),
     );
   }
 }
 
+// ── Shared widgets ─────────────────────────────────────────────────────────────
 class _MsgMenuTile extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -628,12 +814,12 @@ class _MsgMenuTile extends StatelessWidget {
 class _BarBtn extends StatelessWidget {
   final IconData icon;
   final String tooltip;
+  final Color color;
   final VoidCallback? onTap;
-  const _BarBtn({required this.icon, required this.tooltip, this.onTap});
+  const _BarBtn({required this.icon, required this.tooltip, required this.color, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Tooltip(
       message: tooltip,
       child: InkWell(
@@ -641,7 +827,7 @@ class _BarBtn extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Icon(icon, size: 26,
-            color: onTap == null ? Colors.grey : (isDark ? Colors.grey[300] : Colors.black87)),
+            color: onTap == null ? color.withAlpha(80) : color),
         ),
       ),
     );

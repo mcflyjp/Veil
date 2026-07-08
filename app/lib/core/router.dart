@@ -22,10 +22,7 @@ GoRouter buildRouter(ClientManager mgr) => GoRouter(
 
         // ShellRoute keeps BuddyListScreen mounted while child routes change
         ShellRoute(
-          builder: (context, state, child) => SplitShell(
-            atRoot: state.matchedLocation == '/buddylist',
-            child: child,
-          ),
+          builder: (context, state, child) => SplitShell(child: child),
           routes: [
             GoRoute(
               path: '/buddylist',

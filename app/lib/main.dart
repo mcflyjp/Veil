@@ -5,7 +5,7 @@ import 'core/client_manager.dart';
 import 'core/notification_service.dart';
 import 'core/router.dart';
 import 'core/aim_theme.dart';
-import 'core/veil_theme.dart';
+import 'core/veil_user_prefs.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,12 +45,28 @@ void main() async {
     return;
   }
 
+  final prefs = VeilUserPrefs();
+
+  // Attach the Matrix client whenever the user is logged in so settings
+  // are synced to/from Matrix account data automatically.
+  clientManager.addListener(() {
+    if (clientManager!.isLoggedIn) {
+      prefs.attachClient(clientManager.client);
+    } else {
+      prefs.detachClient();
+    }
+  });
+  // Attach immediately if already logged in (e.g. app restart with saved session).
+  if (clientManager.isLoggedIn) {
+    prefs.attachClient(clientManager.client);
+  }
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: clientManager),
         ChangeNotifierProvider(create: (_) => ThemeModeNotifier()),
-        ChangeNotifierProvider(create: (_) => VeilThemeNotifier()),
+        ChangeNotifierProvider.value(value: prefs),
       ],
       child: VeilApp(clientManager: clientManager),
     ),
@@ -70,7 +86,6 @@ class _VeilAppState extends State<VeilApp> {
   @override
   void initState() {
     super.initState();
-    // Route notification taps to the correct chat screen.
     NotificationService.instance.onTap = (roomId) {
       _router.go('/buddylist/chat/${Uri.encodeComponent(roomId)}');
     };

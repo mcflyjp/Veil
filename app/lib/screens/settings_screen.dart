@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
 import '../core/veil_theme.dart';
+import '../core/veil_user_prefs.dart';
 import '../main.dart';
 import '../widgets/aim_title_bar.dart';
 
@@ -14,7 +15,7 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final mgr = context.watch<ClientManager>();
     final themeNotifier = context.watch<ThemeModeNotifier>();
-    final veilTheme = context.watch<VeilThemeNotifier>();
+    final prefs = context.watch<VeilUserPrefs>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final me = mgr.client.userID ?? '';
     final displayName = mgr.myScreenName;
@@ -52,7 +53,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           ...VeilThemeMode.values.map((m) {
             final tc = VeilThemeColors.forMode(m);
-            final selected = veilTheme.mode == m;
+            final selected = prefs.theme == m;
             return ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               leading: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -68,7 +69,7 @@ class SettingsScreen extends StatelessWidget {
               trailing: selected
                   ? Icon(Icons.check_circle, color: tc.badgeBg, size: 22)
                   : null,
-              onTap: () => veilTheme.setMode(m),
+              onTap: () => prefs.setTheme(m),
             );
           }),
           _SectionHeader('Privacy'),

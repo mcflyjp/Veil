@@ -19,6 +19,9 @@ class ClientManager extends ChangeNotifier {
 
   bool get isLoggedIn => _client.isLogged();
 
+  /// Room IDs we've already fired an invite notification for.
+  final _knownInvites = <String>{};
+
   Future<void> init() async {
     late MatrixSdkDatabase db;
     if (kIsWeb) {
@@ -39,10 +42,24 @@ class ClientManager extends ChangeNotifier {
 
     _client.onLoginStateChanged.stream.listen((_) => notifyListeners());
     _client.onSync.stream.listen((_) async {
-      // Auto-accept all pending invites so DMs appear instantly on both sides.
+      // Detect new incoming invites and fire a local notification for each.
       for (final room in _client.rooms) {
         if (room.membership == Membership.invite) {
-          try { await room.join(); } catch (_) {}
+          if (!_knownInvites.contains(room.id)) {
+            _knownInvites.add(room.id);
+            final inviterEvent = room.getState(EventTypes.RoomMember, _client.userID!);
+            final inviterId = inviterEvent?.senderId ?? '';
+            final inviterName = inviterId.isNotEmpty
+                ? inviterId.split(':').first.replaceFirst('@', '')
+                : room.getLocalizedDisplayname();
+            await NotificationService.instance.showMessage(
+              roomId: room.id,
+              senderName: inviterName,
+              body: '$inviterName wants to message you',
+            );
+          }
+        } else {
+          _knownInvites.remove(room.id);
         }
       }
       notifyListeners();
@@ -174,6 +191,10 @@ class ClientManager extends ChangeNotifier {
 
   List<Room> get rooms => _client.rooms
       .where((r) => r.membership == Membership.join)
+      .toList();
+
+  List<Room> get inviteRooms => _client.rooms
+      .where((r) => r.membership == Membership.invite)
       .toList();
 
   Room? roomById(String id) {

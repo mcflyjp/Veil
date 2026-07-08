@@ -1,21 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../screens/buddy_list_screen.dart';
 import '../core/aim_theme.dart';
+import '../core/veil_user_prefs.dart';
 
 /// Breakpoint above which the two-panel layout kicks in.
 const double kSplitBreak = 700;
 
 /// Adaptive shell: side-by-side on wide screens, full-screen stack on narrow.
 class SplitShell extends StatelessWidget {
-  final bool atRoot;
   final Widget child;
 
-  const SplitShell({super.key, required this.atRoot, required this.child});
+  const SplitShell({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Read the live router location — more reliable than the shell's state prop
+    // because go_router v17 doesn't always update state.matchedLocation in
+    // ShellRoute builders before the widget tree rebuilds.
+    final location = GoRouterState.of(context).matchedLocation;
+    final atRoot = location == '/buddylist';
 
     if (width >= kSplitBreak) {
       // ── Wide: buddy list (1/3) | chat (2/3) ──────────────────────────
@@ -46,37 +54,31 @@ class SelectConversationPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tc   = context.watch<VeilUserPrefs>().colors;
+    final topPad = MediaQuery.of(context).padding.top;
     return Column(children: [
-      // AIM-style title bar
       Container(
-        height: 48,
+        padding: EdgeInsets.fromLTRB(10, topPad + 12, 10, 12),
         decoration: BoxDecoration(
-          gradient: LinearGradient(colors: isDark
-              ? [AimColors.darkTitleBar, const Color(0xFF1A3A6A)]
-              : [AimColors.titleBarStart, AimColors.titleBarEnd]),
+          gradient: LinearGradient(colors: [tc.titleStart, tc.titleEnd]),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: const Row(children: [
-          Icon(Icons.lock, color: Colors.white, size: 20),
-          SizedBox(width: 6),
+        child: Row(children: [
+          Icon(Icons.lock, color: tc.titleOnColor.withAlpha(200), size: 20),
+          const SizedBox(width: 6),
           Text('Veil — Instant Message',
-              style: TextStyle(color: Colors.white, fontSize: 16,
+              style: TextStyle(color: tc.titleOnColor, fontSize: 16,
                   fontWeight: FontWeight.bold)),
         ]),
       ),
-      // Empty state
       Expanded(
         child: Container(
-          color: isDark ? AimColors.darkChatBg : AimColors.chatBg,
+          color: tc.chatBg,
           child: Center(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.chat_bubble_outline, size: 52,
-                  color: isDark ? Colors.grey[700] : Colors.grey[400]),
+              Icon(Icons.chat_bubble_outline, size: 52, color: tc.timestampText),
               const SizedBox(height: 14),
               Text('Select a buddy to begin chatting',
-                style: TextStyle(fontSize: 15,
-                    color: isDark ? Colors.grey[600] : Colors.grey[500])),
+                style: TextStyle(fontSize: 15, color: tc.previewText)),
             ]),
           ),
         ),

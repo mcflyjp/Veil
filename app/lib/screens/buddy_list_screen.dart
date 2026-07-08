@@ -10,6 +10,7 @@ import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
 import '../core/conversation_prefs.dart';
 import '../core/veil_theme.dart';
+import '../core/veil_user_prefs.dart';
 
 class BuddyListScreen extends StatefulWidget {
   const BuddyListScreen({super.key});
@@ -64,7 +65,7 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
   void _showContextMenu(BuildContext ctx, Room room) async {
     final prefs = await ConversationPrefs.load(room.id);
     if (!ctx.mounted) return;
-    final tc = ctx.read<VeilThemeNotifier>().colors;
+    final tc = ctx.read<VeilUserPrefs>().colors;
 
     await showModalBottomSheet(
       context: ctx,
@@ -83,9 +84,10 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
   @override
   Widget build(BuildContext context) {
     final mgr = context.watch<ClientManager>();
-    final tc  = context.watch<VeilThemeNotifier>().colors;
-    final vtn = context.read<VeilThemeNotifier>();
+    final tc  = context.watch<VeilUserPrefs>().colors;
+    final vtn = context.read<VeilUserPrefs>();
     final rooms = mgr.rooms;
+    final invites = mgr.inviteRooms;
     final screenName = mgr.myScreenName;
 
     Widget content = Column(
@@ -95,7 +97,7 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
 
         // ── Buddy list body ─────────────────────────────────────────
         Expanded(
-          child: _buildList(context, tc, rooms),
+          child: _buildList(context, tc, rooms, invites),
         ),
 
         // ── Bottom toolbar ──────────────────────────────────────────
@@ -122,8 +124,8 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
     return ColoredBox(color: tc.scaffold, child: content);
   }
 
-  Widget _buildList(BuildContext context, VeilThemeColors tc, List<Room> rooms) {
-    if (rooms.isEmpty) {
+  Widget _buildList(BuildContext context, VeilThemeColors tc, List<Room> rooms, List<Room> invites) {
+    if (rooms.isEmpty && invites.isEmpty) {
       return ColoredBox(
         color: tc.listBg,
         child: _EmptyState(tc: tc, onNew: () => context.go('/buddylist/new')),
@@ -135,16 +137,33 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
       child: ListView(
         padding: tc.roundedRows ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8) : EdgeInsets.zero,
         children: [
-          if (!tc.useGlass) _SectionHeader(tc: tc, count: rooms.length),
-          if (tc.useGlass) const SizedBox(height: 4),
-          ...rooms.map((r) => _BuddyRow(
-            room: r,
-            tc: tc,
-            muted: _mutedCache[r.id] ?? false,
-            onDelete: () => _confirmDelete(context, r, tc),
-            onMuteToggle: () => _getMuted(r.id).then((cur) => _setMuted(r.id, !cur)),
-            onLongPress: () => _showContextMenu(context, r),
-          )),
+          // ── Message Requests ──────────────────────────────────────
+          if (invites.isNotEmpty) ...[
+            _RequestsHeader(tc: tc, count: invites.length),
+            ...invites.map((r) => _InviteRow(
+              room: r,
+              tc: tc,
+              onAccept: () async {
+                try { await r.join(); } catch (_) {}
+              },
+              onDecline: () async {
+                try { await r.leave(); } catch (_) {}
+              },
+            )),
+          ],
+          // ── Conversations ─────────────────────────────────────────
+          if (rooms.isNotEmpty) ...[
+            if (!tc.useGlass) _SectionHeader(tc: tc, count: rooms.length),
+            if (tc.useGlass) const SizedBox(height: 4),
+            ...rooms.map((r) => _BuddyRow(
+              room: r,
+              tc: tc,
+              muted: _mutedCache[r.id] ?? false,
+              onDelete: () => _confirmDelete(context, r, tc),
+              onMuteToggle: () => _getMuted(r.id).then((cur) => _setMuted(r.id, !cur)),
+              onLongPress: () => _showContextMenu(context, r),
+            )),
+          ],
         ],
       ),
     );
@@ -172,7 +191,7 @@ class _GlowOrb extends StatelessWidget {
 
 class _TitleBar extends StatelessWidget {
   final VeilThemeColors tc;
-  final VeilThemeNotifier vtn;
+  final VeilUserPrefs vtn;
   final String screenName;
   final VoidCallback onNew;
   const _TitleBar({required this.tc, required this.vtn, required this.screenName, required this.onNew});
@@ -194,12 +213,12 @@ class _TitleBar extends StatelessWidget {
         ])),
         // Theme cycle button
         _TitleIconBtn(
-          icon: vtn.mode.icon,
-          tooltip: 'Theme: ${vtn.mode.label}',
+          icon: vtn.theme.icon,
+          tooltip: 'Theme: ${vtn.theme.label}',
           onTap: () {
-            vtn.cycle();
+            vtn.cycleTheme();
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('Theme: ${vtn.mode.label}'),
+              content: Text('Theme: ${vtn.theme.label}'),
               duration: const Duration(seconds: 1),
               behavior: SnackBarBehavior.floating,
             ));
@@ -695,6 +714,132 @@ class _MenuTile extends StatelessWidget {
             Text(subtitle!, style: TextStyle(fontSize: 16, color: textColor.withAlpha(153))),
         ])),
       ]),
+    ),
+  );
+}
+
+// ── Message Requests section header ───────────────────────────────────────────
+
+class _RequestsHeader extends StatelessWidget {
+  final VeilThemeColors tc;
+  final int count;
+  const _RequestsHeader({required this.tc, required this.count});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    color: Colors.orange.shade700,
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+    child: Row(children: [
+      const Icon(Icons.mail_outline, color: Colors.white, size: 18),
+      const SizedBox(width: 6),
+      Text('Message Requests ($count)',
+          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+    ]),
+  );
+}
+
+// ── Invite row ─────────────────────────────────────────────────────────────────
+
+class _InviteRow extends StatefulWidget {
+  final Room room;
+  final VeilThemeColors tc;
+  final VoidCallback onAccept;
+  final VoidCallback onDecline;
+  const _InviteRow({required this.room, required this.tc,
+      required this.onAccept, required this.onDecline});
+
+  @override
+  State<_InviteRow> createState() => _InviteRowState();
+}
+
+class _InviteRowState extends State<_InviteRow> {
+  bool _busy = false;
+
+  String get _inviterName {
+    final myId = widget.room.client.userID ?? '';
+    final inviterEvent = widget.room.getState(EventTypes.RoomMember, myId);
+    final inviterId = inviterEvent?.senderId ?? '';
+    return inviterId.isNotEmpty
+        ? inviterId.split(':').first.replaceFirst('@', '')
+        : widget.room.getLocalizedDisplayname();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tc = widget.tc;
+    final name = _inviterName;
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+
+    return Container(
+      color: tc.rowBg == Colors.transparent ? Colors.transparent : tc.rowBg.withAlpha(230),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(children: [
+        // Avatar
+        Container(
+          width: 40, height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.orange.shade600,
+          ),
+          alignment: Alignment.center,
+          child: Text(initial,
+            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(width: 12),
+        // Name + prompt
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(name,
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: tc.nameText),
+            overflow: TextOverflow.ellipsis),
+          Text('wants to message you',
+            style: TextStyle(fontSize: 13, color: tc.previewText)),
+        ])),
+        const SizedBox(width: 8),
+        // Decline
+        _busy
+            ? const SizedBox(width: 22, height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2))
+            : Row(mainAxisSize: MainAxisSize.min, children: [
+                _ActionBtn(
+                  label: 'Decline',
+                  color: Colors.red,
+                  onTap: () async {
+                    setState(() => _busy = true);
+                    widget.onDecline();
+                  },
+                ),
+                const SizedBox(width: 6),
+                _ActionBtn(
+                  label: 'Accept',
+                  color: Colors.green.shade600,
+                  onTap: () async {
+                    setState(() => _busy = true);
+                    widget.onAccept();
+                  },
+                ),
+              ]),
+      ]),
+    );
+  }
+}
+
+class _ActionBtn extends StatelessWidget {
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  const _ActionBtn({required this.label, required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(label,
+        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
     ),
   );
 }
