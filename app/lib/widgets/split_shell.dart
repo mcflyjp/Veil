@@ -10,17 +10,16 @@ const double kSplitBreak = 700;
 /// Adaptive shell: side-by-side on wide screens, full-screen stack on narrow.
 class SplitShell extends StatelessWidget {
   final Widget child;
+  final String matchedLocation;
 
-  const SplitShell({super.key, required this.child});
+  const SplitShell({super.key, required this.child, required this.matchedLocation});
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Check by widget type — more reliable than GoRouterState.matchedLocation
-    // inside a ShellRoute, which can return stale values in go_router v17.
-    final atRoot = child is SelectConversationPanel;
+    final atRoot = matchedLocation == '/buddylist';
 
     if (width >= kSplitBreak) {
       // ── Wide: buddy list (1/3) | chat (2/3) ──────────────────────────
