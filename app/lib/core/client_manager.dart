@@ -219,4 +219,11 @@ class ClientManager extends ChangeNotifier {
       return null;
     }
   }
+
+  Future<void> setDisplayName(String name) async {
+    final userId = _client.userID;
+    if (userId == null) return;
+    await _client.setProfileField(userId, 'displayname', {'displayname': name});
+    notifyListeners();
+  }
 }

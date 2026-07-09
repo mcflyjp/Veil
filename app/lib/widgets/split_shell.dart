@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../screens/buddy_list_screen.dart';
 import '../core/aim_theme.dart';
@@ -19,11 +18,9 @@ class SplitShell extends StatelessWidget {
     final width = MediaQuery.of(context).size.width;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Read the live router location — more reliable than the shell's state prop
-    // because go_router v17 doesn't always update state.matchedLocation in
-    // ShellRoute builders before the widget tree rebuilds.
-    final location = GoRouterState.of(context).matchedLocation;
-    final atRoot = location == '/buddylist';
+    // Check by widget type — more reliable than GoRouterState.matchedLocation
+    // inside a ShellRoute, which can return stale values in go_router v17.
+    final atRoot = child is SelectConversationPanel;
 
     if (width >= kSplitBreak) {
       // ── Wide: buddy list (1/3) | chat (2/3) ──────────────────────────

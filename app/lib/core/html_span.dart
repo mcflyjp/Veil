@@ -67,8 +67,9 @@ void _parse(String html, TextStyle style, List<InlineSpan> out) {
   }
 }
 
-/// Finds the index of the matching closing tag for [tagName] in [html] starting at [from],
-/// accounting for nesting.
+/// Finds the matching closing tag for [tagName] in [html] starting at [from],
+/// accounting for nesting. Strips the leading '/' before name extraction so
+/// '/b'.split(...)[0] gives 'b' not '' (the original bug that broke all HTML tags).
 int _findClose(String html, int from, String tagName) {
   int depth = 0, i = from;
   while (i < html.length) {
@@ -76,11 +77,13 @@ int _findClose(String html, int from, String tagName) {
     final end = html.indexOf('>', i);
     if (end == -1) return -1;
     final tag = html.substring(i + 1, end).trim();
-    final name = tag.split(RegExp(r'[\s/]'))[0].toLowerCase();
-    if (tag.startsWith('/') && name == tagName) {
+    final isClose = tag.startsWith('/');
+    final rawName = isClose ? tag.substring(1) : tag;
+    final name = rawName.split(RegExp(r'[\s/]'))[0].toLowerCase();
+    if (isClose && name == tagName) {
       if (depth == 0) return i;
       depth--;
-    } else if (name == tagName && !tag.endsWith('/')) {
+    } else if (!isClose && name == tagName && !tag.endsWith('/')) {
       depth++;
     }
     i = end + 1;

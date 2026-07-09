@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:matrix/matrix.dart';
 import 'package:provider/provider.dart';
@@ -38,6 +41,15 @@ class _ChatScreenState extends State<ChatScreen> {
   // Typing indicator state
   Timer? _typingTimer;
   bool   _isTyping = false;
+
+  // Per-message disappear timer (0 = off)
+  int _disappearAfterSecs = 0;
+
+  String get _disappearLabel => _disappearAfterSecs == 0 ? ''
+      : _disappearAfterSecs < 60   ? '${_disappearAfterSecs}s'
+      : _disappearAfterSecs < 3600 ? '${_disappearAfterSecs ~/ 60}m'
+      : _disappearAfterSecs < 86400 ? '${_disappearAfterSecs ~/ 3600}h'
+      : '${_disappearAfterSecs ~/ 86400}d';
 
   Room? get _room =>
       context.read<ClientManager>().roomById(Uri.decodeComponent(widget.roomId));
@@ -140,6 +152,9 @@ class _ChatScreenState extends State<ChatScreen> {
           'format': 'org.matrix.custom.html',
           'formatted_body': html,
         },
+        if (_disappearAfterSecs > 0)
+          'veil_expire_at': DateTime.now().millisecondsSinceEpoch +
+              (_disappearAfterSecs * 1000),
       });
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
@@ -200,6 +215,58 @@ class _ChatScreenState extends State<ChatScreen> {
     await room.client.setRoomStateWithKey(room.id, 'm.room.message_retention', '', content);
   }
 
+  Future<void> _pickDisappearTimer() async {
+    const options = [
+      (0,      'Off'),
+      (30,     '30 seconds'),
+      (300,    '5 minutes'),
+      (1800,   '30 minutes'),
+      (3600,   '1 hour'),
+      (86400,  '24 hours'),
+      (604800, '7 days'),
+    ];
+    final tc = context.read<VeilUserPrefs>().colors;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: tc.inputBg,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 36, height: 4,
+            margin: const EdgeInsets.only(top: 10, bottom: 10),
+            decoration: BoxDecoration(
+                color: tc.previewText.withAlpha(80),
+                borderRadius: BorderRadius.circular(2))),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text('Next message disappears after…',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold,
+                    color: tc.nameText))),
+          ...options.map((o) {
+            final (secs, label) = o;
+            final active = secs == _disappearAfterSecs;
+            return ListTile(
+              leading: Icon(
+                secs == 0 ? Icons.timer_off_outlined : Icons.timer_outlined,
+                color: active ? Colors.orange : tc.toolbarText, size: 22),
+              title: Text(label,
+                  style: TextStyle(fontSize: 16, color: tc.nameText,
+                      fontWeight: active ? FontWeight.bold : FontWeight.normal)),
+              trailing: active ? const Icon(Icons.check, color: Colors.orange) : null,
+              onTap: () {
+                setState(() => _disappearAfterSecs = secs);
+                Navigator.pop(context);
+              },
+            );
+          }),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _showMessageMenu(BuildContext ctx, Event event) async {
     final room = _room;
     if (room == null) return;
@@ -223,7 +290,7 @@ class _ChatScreenState extends State<ChatScreen> {
           _MsgMenuTile(icon: Icons.timer_outlined, label: 'Disappear in…', color: tc.nameText,
             onTap: () async {
               Navigator.pop(ctx);
-              await _pickDisappearTimer(ctx, event, room);
+              await _pickEventDisappearTimer(ctx, event, room);
             }),
           _MsgMenuTile(icon: Icons.delete_outline, label: 'Delete for everyone', color: Colors.red,
             onTap: () async {
@@ -235,7 +302,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Future<void> _pickDisappearTimer(BuildContext ctx, Event event, Room room) async {
+  Future<void> _pickEventDisappearTimer(BuildContext ctx, Event event, Room room) async {
     const options = [
       (30, '30 seconds'), (60, '1 minute'), (300, '5 minutes'),
       (1800, '30 minutes'), (3600, '1 hour'), (86400, '24 hours'), (604800, '7 days'),
@@ -368,6 +435,23 @@ class _ChatScreenState extends State<ChatScreen> {
                 style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: tc.previewText)),
             ),
 
+          // ── Disappear timer indicator ─────────────────────────────────
+          if (_disappearAfterSecs > 0)
+            Container(
+              color: Colors.orange.withAlpha(25),
+              padding: const EdgeInsets.fromLTRB(12, 5, 8, 5),
+              child: Row(children: [
+                const Icon(Icons.timer, color: Colors.orange, size: 14),
+                const SizedBox(width: 6),
+                Expanded(child: Text(
+                  'Next message disappears after $_disappearLabel',
+                  style: const TextStyle(fontSize: 12, color: Colors.orange))),
+                GestureDetector(
+                  onTap: () => setState(() => _disappearAfterSecs = 0),
+                  child: const Icon(Icons.close, color: Colors.orange, size: 16)),
+              ]),
+            ),
+
           // ── Pending image preview ─────────────────────────────────────
           if (_pendingImageBytes != null)
             Container(
@@ -399,8 +483,15 @@ class _ChatScreenState extends State<ChatScreen> {
                   color: tc.toolbarText, onTap: _sending ? null : _sendImage),
               _BarBtn(icon: Icons.attach_file, tooltip: 'Send file',
                   color: tc.toolbarText, onTap: _sending ? null : _sendFile),
-              _BarBtn(icon: Icons.timer_outlined, tooltip: 'Disappearing messages',
-                  color: tc.toolbarText, onTap: _setDisappearing),
+              // Per-message disappear toggle (orange when active)
+              _BarBtn(
+                icon: _disappearAfterSecs > 0 ? Icons.timer : Icons.timer_outlined,
+                tooltip: _disappearAfterSecs > 0
+                    ? 'Disappear: $_disappearLabel — tap to change'
+                    : 'Send as disappearing message',
+                color: _disappearAfterSecs > 0 ? Colors.orange : tc.toolbarText,
+                onTap: _pickDisappearTimer,
+              ),
               const SizedBox(width: 4),
               InkWell(
                 onTap: () => _openFontPicker(prefs),
@@ -437,7 +528,8 @@ class _ChatScreenState extends State<ChatScreen> {
           // ── Input area ────────────────────────────────────────────────
           Container(
             color: tc.inputBg,
-            padding: const EdgeInsets.all(10),
+            padding: EdgeInsets.fromLTRB(10, 10, 10,
+                10 + MediaQuery.viewPaddingOf(context).bottom),
             child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Expanded(
                 child: Container(
@@ -856,7 +948,7 @@ class _AimMessageLine extends StatelessWidget {
     );
   }
 
-  // ── Network image with tap-to-enlarge ──────────────────────────────────────
+  // ── Network image with tap-to-enlarge and save ─────────────────────────────
   Widget _buildNetworkImage(BuildContext context, {required double height}) {
     final client = event.room.client;
     String? mxcUrl;
@@ -871,6 +963,8 @@ class _AimMessageLine extends StatelessWidget {
     final mxcUri  = Uri.parse(mxcUrl);
     final httpUrl = '${client.homeserver}/_matrix/media/v3/download/${mxcUri.host}${mxcUri.path}';
     final token   = client.accessToken ?? '';
+    // Disappearing images cannot be saved
+    final isDisappearing = event.content['veil_expire_at'] != null;
 
     final img = Image.network(
       httpUrl,
@@ -885,22 +979,68 @@ class _AimMessageLine extends StatelessWidget {
       onTap: () => showDialog(
         context: context,
         barrierColor: Colors.black87,
-        builder: (dialogCtx) => Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.all(12),
-          child: Stack(children: [
-            InteractiveViewer(child: Image.network(httpUrl,
-              headers: {'Authorization': 'Bearer $token'},
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Text('[Image unavailable]',
-                style: TextStyle(color: Colors.white)))),
-            Positioned(top: 0, right: 0,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white, size: 28),
-                onPressed: () => Navigator.pop(dialogCtx),
-              )),
-          ]),
-        ),
+        builder: (dialogCtx) {
+          Future<void> saveImage() async {
+            try {
+              final resp = await http.get(
+                  Uri.parse(httpUrl), headers: {'Authorization': 'Bearer $token'});
+              if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
+              final dir  = await getApplicationDocumentsDirectory();
+              final name = 'veil_${DateTime.now().millisecondsSinceEpoch}.jpg';
+              await File('${dir.path}/$name').writeAsBytes(resp.bodyBytes);
+              // Notify sender
+              final myName = client.userID?.split(':').first.replaceFirst('@', '') ?? 'Someone';
+              await event.room.sendEvent({
+                'msgtype': 'm.notice',
+                'body': '💾 $myName saved your image',
+              });
+              if (dialogCtx.mounted) {
+                Navigator.pop(dialogCtx);
+                ScaffoldMessenger.of(dialogCtx).showSnackBar(const SnackBar(
+                  content: Text('Image saved to Veil folder'),
+                  duration: Duration(seconds: 2)));
+              }
+            } catch (e) {
+              if (dialogCtx.mounted) {
+                ScaffoldMessenger.of(dialogCtx).showSnackBar(SnackBar(
+                  content: Text('Save failed: $e'),
+                  duration: const Duration(seconds: 3)));
+              }
+            }
+          }
+
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(12),
+            child: Stack(children: [
+              InteractiveViewer(child: Image.network(httpUrl,
+                headers: {'Authorization': 'Bearer $token'},
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Text('[Image unavailable]',
+                  style: TextStyle(color: Colors.white)))),
+              // Close button
+              Positioned(top: 0, right: 0,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                  onPressed: () => Navigator.pop(dialogCtx))),
+              // Save button — hidden for disappearing images
+              if (!isDisappearing)
+                Positioned(bottom: 0, right: 0,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(8)),
+                    child: IconButton(
+                      icon: const Icon(Icons.download, color: Colors.white, size: 24),
+                      tooltip: 'Save image',
+                      onPressed: saveImage))),
+              if (isDisappearing)
+                const Positioned(bottom: 8, left: 0, right: 0,
+                  child: Center(child: Text('⏱ Disappearing — cannot save',
+                    style: TextStyle(color: Colors.white70, fontSize: 12)))),
+            ]),
+          );
+        },
       ),
       child: img,
     );
