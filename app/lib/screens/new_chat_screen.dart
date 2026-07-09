@@ -14,13 +14,27 @@ class NewChatScreen extends StatefulWidget {
 }
 
 class _NewChatScreenState extends State<NewChatScreen> {
-  final _ctrl = TextEditingController();
+  final _ctrl        = TextEditingController();
+  final _memberCtrl  = TextEditingController();
   bool _loading = false;
   String? _error;
   bool _isGroup = false;
+  final List<String> _members = [];
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() { _ctrl.dispose(); _memberCtrl.dispose(); super.dispose(); }
+
+  void _addMember() {
+    final raw = _memberCtrl.text.trim();
+    if (raw.isEmpty) return;
+    String userId = raw;
+    if (!userId.startsWith('@')) userId = '@$userId:veilmsg.com';
+    else if (!userId.contains(':')) userId = '$userId:veilmsg.com';
+    if (!_members.contains(userId)) {
+      setState(() => _members.add(userId));
+    }
+    _memberCtrl.clear();
+  }
 
   Future<void> _start() async {
     final mgr = context.read<ClientManager>();
@@ -30,7 +44,11 @@ class _NewChatScreenState extends State<NewChatScreen> {
     try {
       String roomId;
       if (_isGroup) {
-        roomId = await mgr.client.createRoom(name: input, preset: CreateRoomPreset.privateChat);
+        roomId = await mgr.client.createRoom(
+          name: input,
+          preset: CreateRoomPreset.privateChat,
+          invite: _members,
+        );
       } else {
         // Resolve screen name → full Matrix ID
         String userId = input;
@@ -86,13 +104,45 @@ class _NewChatScreenState extends State<NewChatScreen> {
               controller: _ctrl,
               autofocus: true,
               textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _start(),
+              onSubmitted: (_) => _isGroup ? FocusScope.of(context).nextFocus() : _start(),
               style: const TextStyle(fontFamily: 'Arial', fontSize: 13),
               decoration: InputDecoration(
                 hintText: _isGroup ? 'Enter group name' : 'e.g. jeremy or @jeremy:veilmsg.com',
                 hintStyle: const TextStyle(fontFamily: 'Arial', fontSize: 11),
               ),
             ),
+            if (_isGroup) ...[
+              const SizedBox(height: 16),
+              const Text('Add members',
+                style: TextStyle(fontFamily: 'Arial', fontSize: 11, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Row(children: [
+                Expanded(
+                  child: TextField(
+                    controller: _memberCtrl,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _addMember(),
+                    style: const TextStyle(fontFamily: 'Arial', fontSize: 13),
+                    decoration: const InputDecoration(
+                      hintText: 'Screen name to invite',
+                      hintStyle: TextStyle(fontFamily: 'Arial', fontSize: 11),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(onPressed: _addMember, child: const Text('Add')),
+              ]),
+              if (_members.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(spacing: 6, runSpacing: 4,
+                  children: _members.map((m) => Chip(
+                    label: Text(m.split(':').first.replaceFirst('@', ''),
+                        style: const TextStyle(fontSize: 11)),
+                    onDeleted: () => setState(() => _members.remove(m)),
+                    visualDensity: VisualDensity.compact,
+                  )).toList()),
+              ],
+            ],
             if (_error != null) ...[
               const SizedBox(height: 8),
               Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 11, fontFamily: 'Arial')),

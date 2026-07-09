@@ -16,6 +16,7 @@ class SplitShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tc    = context.watch<VeilUserPrefs>().colors;
     final width = MediaQuery.of(context).size.width;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -25,6 +26,7 @@ class SplitShell extends StatelessWidget {
       // ── Wide: buddy list (1/3) | chat (2/3) ──────────────────────────
       final listWidth = (width / 3).clamp(240.0, 380.0);
       return Scaffold(
+        backgroundColor: tc.scaffold,
         body: Row(children: [
           SizedBox(width: listWidth, child: const BuddyListScreen()),
           Container(
@@ -38,9 +40,11 @@ class SplitShell extends StatelessWidget {
 
     // ── Narrow: buddy list full-screen at root, child otherwise ──────────
     if (atRoot) {
-      return const Scaffold(body: BuddyListScreen());
+      return Scaffold(backgroundColor: tc.scaffold, body: const BuddyListScreen());
     }
-    return child; // ChatScreen / SettingsScreen / NewChatScreen each have Scaffold
+    // Wrap in Material so the Navigator's background matches the theme
+    // rather than flashing gray during page transitions.
+    return Material(color: tc.scaffold, child: child);
   }
 }
 

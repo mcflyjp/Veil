@@ -9,6 +9,7 @@ import 'package:matrix/matrix.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:video_player/video_player.dart';
 import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
 import '../core/disappearing_message_service.dart';
@@ -32,6 +33,7 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _inputCtrl  = TextEditingController();
   final _scrollCtrl = ScrollController();
+  final _inputFocus = FocusNode();
   Timeline? _timeline;
   bool _loadingTimeline = true;
   bool _sending         = false;
@@ -65,12 +67,12 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _typingTimer?.cancel();
-    // Stop typing notification on exit
     _room?.setTyping(false);
     NotificationService.instance.activeRoomId = null;
     _timeline?.cancelSubscriptions();
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
+    _inputFocus.dispose();
     super.dispose();
   }
 
@@ -164,11 +166,120 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _pickMedia() async {
+    final tc = context.read<VeilUserPrefs>().colors;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: tc.inputBg,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 36, height: 4,
+            margin: const EdgeInsets.only(top: 10, bottom: 6),
+            decoration: BoxDecoration(
+                color: tc.previewText.withAlpha(80),
+                borderRadius: BorderRadius.circular(2))),
+          ListTile(
+            leading: Icon(Icons.image_outlined, color: tc.toolbarText),
+            title: Text('Photo', style: TextStyle(color: tc.nameText, fontSize: 16)),
+            onTap: () async {
+              Navigator.pop(sheetCtx);
+              await _sendImage();
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.videocam_outlined, color: tc.toolbarText),
+            title: Text('Video', style: TextStyle(color: tc.nameText, fontSize: 16)),
+            onTap: () async {
+              Navigator.pop(sheetCtx);
+              await _sendVideo();
+            },
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _sendImage() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
     if (mounted) setState(() { _pendingImage = picked; _pendingImageBytes = bytes; });
+  }
+
+  Future<void> _sendVideo() async {
+    final room = _room;
+    if (room == null) return;
+    final result = await FilePicker.platform.pickFiles(type: FileType.video, withData: true);
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    if (file.bytes == null) return;
+    setState(() => _sending = true);
+    try {
+      final ext  = file.extension?.toLowerCase() ?? 'mp4';
+      final mime = ext == 'webm' ? 'video/webm'
+                 : ext == 'mov'  ? 'video/quicktime'
+                 : 'video/mp4';
+      await room.sendFileEvent(MatrixFile(bytes: file.bytes!, name: file.name, mimeType: mime));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send video: $e'), duration: const Duration(seconds: 4)));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _addMember() async {
+    final room = _room;
+    if (room == null) return;
+    final tc   = context.read<VeilUserPrefs>().colors;
+    final ctrl = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: tc.inputBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Add person', style: TextStyle(color: tc.nameText, fontSize: 18, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: TextStyle(color: tc.nameText, fontSize: 16),
+          decoration: InputDecoration(
+            hintText: 'Screen name (e.g. alice)',
+            hintStyle: TextStyle(color: tc.previewText),
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: tc.toolbarActive)),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: tc.toolbarActive, width: 2)),
+          ),
+          onSubmitted: (_) => Navigator.pop(ctx),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: TextStyle(color: tc.previewText))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: tc.badgeBg, foregroundColor: tc.badgeText),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Invite')),
+        ],
+      ),
+    );
+    final input = ctrl.text.trim();
+    ctrl.dispose();
+    if (input.isEmpty) return;
+    String userId = input;
+    if (!userId.startsWith('@')) userId = '@$userId:veilmsg.com';
+    else if (!userId.contains(':')) userId = '$userId:veilmsg.com';
+    try {
+      await room.invite(userId);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Invited $userId'), duration: const Duration(seconds: 2)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not invite: $e'), duration: const Duration(seconds: 4)));
+    }
   }
 
   Future<void> _sendStagedImage(Room room) async {
@@ -392,6 +503,7 @@ class _ChatScreenState extends State<ChatScreen> {
             tc: tc,
             onBack: () => context.go('/buddylist'),
             onTimer: _setDisappearing,
+            onAddMember: room.isDirectChat ? null : _addMember,
           ),
 
           // ── Message area ─────────────────────────────────────────────
@@ -407,12 +519,14 @@ class _ChatScreenState extends State<ChatScreen> {
                           controller: _scrollCtrl,
                           reverse: true,
                           padding: const EdgeInsets.all(8),
+                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
                           itemCount: msgEvents.length,
                           itemBuilder: (_, i) {
                             final event = msgEvents[i];
                             final isMe  = event.senderId == myId;
                             return GestureDetector(
                               onLongPress: () => _showMessageMenu(context, event),
+                              onTap: () => _inputFocus.requestFocus(),
                               child: _AimMessageLine(
                                 event: event, isMe: isMe, tc: tc,
                                 myFontFamily: prefs.fontFamily,
@@ -479,8 +593,8 @@ class _ChatScreenState extends State<ChatScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 4),
             decoration: BoxDecoration(border: Border(top: toolbarBorder, bottom: toolbarBorder)),
             child: Row(children: [
-              _BarBtn(icon: Icons.image_outlined, tooltip: 'Send image',
-                  color: tc.toolbarText, onTap: _sending ? null : _sendImage),
+              _BarBtn(icon: Icons.perm_media_outlined, tooltip: 'Send photo or video',
+                  color: tc.toolbarText, onTap: _sending ? null : _pickMedia),
               _BarBtn(icon: Icons.attach_file, tooltip: 'Send file',
                   color: tc.toolbarText, onTap: _sending ? null : _sendFile),
               // Per-message disappear toggle (orange when active)
@@ -540,6 +654,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   child: TextField(
                     controller: _inputCtrl,
+                    focusNode: _inputFocus,
                     maxLines: null,
                     textInputAction: TextInputAction.newline,
                     style: TextStyle(
@@ -816,6 +931,8 @@ class _AimMessageLine extends StatelessWidget {
         style: const TextStyle(color: Colors.white70, fontStyle: FontStyle.italic, fontSize: 15));
     } else if (event.messageType == MessageTypes.Image) {
       body = _buildNetworkImage(context, height: 200);
+    } else if (event.messageType == MessageTypes.Video) {
+      body = _buildVideoMessage(context);
     } else {
       final formattedBody = event.content['formatted_body'] as String?;
       if (formattedBody != null && formattedBody.isNotEmpty) {
@@ -911,10 +1028,19 @@ class _AimMessageLine extends StatelessWidget {
       );
     }
 
-    if (event.messageType == MessageTypes.Audio || event.messageType == MessageTypes.Video ||
-        event.messageType == MessageTypes.File) {
+    if (event.messageType == MessageTypes.Video) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          RichText(text: TextSpan(children: [timeSpan, nameSpan])),
+          const SizedBox(height: 4),
+          _buildVideoMessage(context),
+        ]),
+      );
+    }
+
+    if (event.messageType == MessageTypes.Audio || event.messageType == MessageTypes.File) {
       final label = event.messageType == MessageTypes.Audio ? '[Audio: ${event.body}]'
-                  : event.messageType == MessageTypes.Video ? '[Video: ${event.body}]'
                   : '[File: ${event.body}]';
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
@@ -1045,6 +1171,129 @@ class _AimMessageLine extends StatelessWidget {
       child: img,
     );
   }
+
+  // ── Video message card ────────────────────────────────────────────────────
+  Widget _buildVideoMessage(BuildContext context) {
+    final client = event.room.client;
+    String? mxcUrl;
+    final fileMap = event.content['file'];
+    if (fileMap is Map) mxcUrl = fileMap['url'] as String?;
+    mxcUrl ??= event.content['url'] as String?;
+
+    if (mxcUrl == null || !mxcUrl.startsWith('mxc://')) {
+      return Text('[Video — unavailable]',
+          style: TextStyle(fontStyle: FontStyle.italic, color: tc.previewText));
+    }
+
+    final mxcUri  = Uri.parse(mxcUrl);
+    final httpUrl = '${client.homeserver}/_matrix/media/v3/download/${mxcUri.host}${mxcUri.path}';
+    final token   = client.accessToken ?? '';
+
+    return GestureDetector(
+      onTap: () => showDialog(
+        context: context,
+        barrierColor: Colors.black87,
+        builder: (_) => _InlineVideoDialog(httpUrl: httpUrl, token: token),
+      ),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 280),
+        decoration: BoxDecoration(
+          color: Colors.black45,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white24),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.play_circle_outline, color: Colors.white, size: 36),
+          const SizedBox(width: 10),
+          Flexible(child: Text(event.body,
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+            overflow: TextOverflow.ellipsis)),
+        ]),
+      ),
+    );
+  }
+}
+
+// ── Inline video player dialog ────────────────────────────────────────────────
+class _InlineVideoDialog extends StatefulWidget {
+  final String httpUrl;
+  final String token;
+  const _InlineVideoDialog({required this.httpUrl, required this.token});
+
+  @override
+  State<_InlineVideoDialog> createState() => _InlineVideoDialogState();
+}
+
+class _InlineVideoDialogState extends State<_InlineVideoDialog> {
+  late final VideoPlayerController _ctrl;
+  bool _initialized = false;
+  bool _error = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = VideoPlayerController.networkUrl(
+      Uri.parse(widget.httpUrl),
+      httpHeaders: {'Authorization': 'Bearer ${widget.token}'},
+    );
+    _ctrl.initialize().then((_) {
+      if (mounted) setState(() => _initialized = true);
+      _ctrl.play();
+    }).catchError((_) {
+      if (mounted) setState(() => _error = true);
+    });
+    _ctrl.addListener(() { if (mounted) setState(() {}); });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: const EdgeInsets.all(12),
+      child: Stack(children: [
+        if (_error)
+          const Padding(padding: EdgeInsets.all(32),
+            child: Text('Could not play video', style: TextStyle(color: Colors.white70)))
+        else if (!_initialized)
+          const SizedBox(
+            width: double.infinity,
+            height: 240,
+            child: Center(child: CircularProgressIndicator(color: Colors.white)))
+        else
+          Column(mainAxisSize: MainAxisSize.min, children: [
+            AspectRatio(
+              aspectRatio: _ctrl.value.aspectRatio,
+              child: VideoPlayer(_ctrl)),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              IconButton(
+                icon: Icon(
+                  _ctrl.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                  color: Colors.white, size: 32),
+                onPressed: () {
+                  _ctrl.value.isPlaying ? _ctrl.pause() : _ctrl.play();
+                }),
+              Text(
+                '${_formatDur(_ctrl.value.position)} / ${_formatDur(_ctrl.value.duration)}',
+                style: const TextStyle(color: Colors.white70, fontSize: 13)),
+            ]),
+          ]),
+        Positioned(top: 0, right: 0,
+          child: IconButton(
+            icon: const Icon(Icons.close, color: Colors.white),
+            onPressed: () => Navigator.pop(context))),
+      ]),
+    );
+  }
+
+  String _formatDur(Duration d) =>
+      '${d.inMinutes.toString().padLeft(2, '0')}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
 }
 
 // ── Chat title bar ────────────────────────────────────────────────────────────
@@ -1053,7 +1302,9 @@ class _ChatTitleBar extends StatelessWidget {
   final VeilThemeColors tc;
   final VoidCallback onBack;
   final VoidCallback? onTimer;
-  const _ChatTitleBar({required this.title, required this.tc, required this.onBack, this.onTimer});
+  final VoidCallback? onAddMember;
+  const _ChatTitleBar({required this.title, required this.tc, required this.onBack,
+      this.onTimer, this.onAddMember});
 
   @override
   Widget build(BuildContext context) {
@@ -1072,6 +1323,10 @@ class _ChatTitleBar extends StatelessWidget {
         Expanded(child: Text('Veil — $title',
           style: TextStyle(color: tc.titleOnColor, fontSize: 18, fontWeight: FontWeight.bold),
           overflow: TextOverflow.ellipsis)),
+        if (onAddMember != null)
+          InkWell(onTap: onAddMember,
+            child: Padding(padding: const EdgeInsets.all(8),
+              child: Icon(Icons.person_add_outlined, color: tc.titleOnColor, size: 24))),
         if (onTimer != null)
           InkWell(onTap: onTimer,
             child: Padding(padding: const EdgeInsets.all(8),
