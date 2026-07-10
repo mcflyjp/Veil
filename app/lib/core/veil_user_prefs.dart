@@ -27,6 +27,7 @@ class VeilUserPrefs extends ChangeNotifier {
 
   Client? _client;
   StreamSubscription<SyncUpdate>? _syncSub;
+  String? _lastAccountDataContent; // guards against redundant sync pulls
 
   VeilUserPrefs() { _loadLocal(); }
 
@@ -137,6 +138,12 @@ class VeilUserPrefs extends ChangeNotifier {
 
     final event = client.accountData[_kAccountDataType];
     if (event == null) return;
+
+    // Skip entirely if the raw content hasn't changed since last pull
+    final snapshot = event.content.toString();
+    if (snapshot == _lastAccountDataContent) return;
+    _lastAccountDataContent = snapshot;
+
     final c = event.content;
 
     var changed = false;

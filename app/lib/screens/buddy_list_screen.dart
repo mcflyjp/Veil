@@ -21,6 +21,24 @@ class BuddyListScreen extends StatefulWidget {
 class _BuddyListScreenState extends State<BuddyListScreen> {
   final Map<String, bool> _mutedCache = {};
 
+  @override
+  void initState() {
+    super.initState();
+    _warmMutedCache();
+  }
+
+  Future<void> _warmMutedCache() async {
+    final p = await SharedPreferences.getInstance();
+    final map = <String, bool>{};
+    for (final key in p.getKeys()) {
+      if (key.startsWith('conv_') && key.endsWith('_muted')) {
+        final roomId = key.substring(5, key.length - 6);
+        map[roomId] = p.getBool(key) ?? false;
+      }
+    }
+    if (mounted) setState(() => _mutedCache.addAll(map));
+  }
+
   Future<bool> _getMuted(String roomId) async {
     if (_mutedCache.containsKey(roomId)) return _mutedCache[roomId]!;
     final p = await SharedPreferences.getInstance();
@@ -380,7 +398,7 @@ class _BuddyRow extends StatelessWidget {
               border: Border(bottom: BorderSide(color: tc.divider, width: 0.5)),
             ),
       child: Row(children: [
-        _Avatar(initial: initial, tc: tc),
+        _Avatar(initial: initial, tc: tc, isGroup: !room.isDirectChat),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
@@ -443,7 +461,9 @@ class _BuddyRow extends StatelessWidget {
 class _Avatar extends StatelessWidget {
   final String initial;
   final VeilThemeColors tc;
-  const _Avatar({required this.initial, required this.tc});
+  // Groups don't get a presence dot — only DMs do
+  final bool isGroup;
+  const _Avatar({required this.initial, required this.tc, this.isGroup = false});
 
   @override
   Widget build(BuildContext context) {
@@ -462,16 +482,17 @@ class _Avatar extends StatelessWidget {
         child: Center(child: Text(initial,
             style: TextStyle(color: tc.avatarText, fontSize: 19, fontWeight: FontWeight.bold))),
       ),
-      Positioned(bottom: 1, right: 1,
-        child: Container(
-          width: 12, height: 12,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AimColors.online,
-            border: Border.all(color: tc.presenceBorder, width: 1.5),
+      if (!isGroup)
+        Positioned(bottom: 1, right: 1,
+          child: Container(
+            width: 12, height: 12,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AimColors.online,
+              border: Border.all(color: tc.presenceBorder, width: 1.5),
+            ),
           ),
         ),
-      ),
     ]);
 
     return SizedBox(width: 46, height: 46, child: child);

@@ -53,7 +53,9 @@ void _parse(String html, TextStyle style, List<InlineSpan> out) {
         nextStyle = style.copyWith(decoration: TextDecoration.underline);
       case 'font':
         final face = _attr(tag, 'face');
-        final pt   = double.tryParse(_attr(tag, 'data-pt') ?? '');
+        // data-pt is Veil-specific; also check standard CSS style attribute
+        final pt = double.tryParse(_attr(tag, 'data-pt') ?? '')
+            ?? _parseFontSizePt(_attr(tag, 'style') ?? '');
         nextStyle = style.copyWith(
           fontFamily: (face != null && face.isNotEmpty) ? face : style.fontFamily,
           fontSize:   pt ?? style.fontSize,
@@ -95,6 +97,13 @@ String? _attr(String tag, String name) =>
     RegExp('$name=["\']([^"\']*)["\']', caseSensitive: false)
         .firstMatch(tag)
         ?.group(1);
+
+/// Extracts the numeric pt value from a CSS style string like "font-size:18pt".
+double? _parseFontSizePt(String style) {
+  final m = RegExp(r'font-size\s*:\s*([\d.]+)pt', caseSensitive: false)
+      .firstMatch(style);
+  return m != null ? double.tryParse(m.group(1)!) : null;
+}
 
 String _ent(String s) => s
     .replaceAll('&amp;',  '&')

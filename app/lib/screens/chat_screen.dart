@@ -127,7 +127,8 @@ class _ChatScreenState extends State<ChatScreen> {
     if (prefs.underline) html = '<u>$html</u>';
     if (prefs.italic)    html = '<i>$html</i>';
     if (prefs.bold)      html = '<b>$html</b>';
-    return '<font face="${prefs.fontFamily}" data-pt="${prefs.fontSize.toInt()}">$html</font>';
+    // data-pt is Veil-specific; also emit standard CSS font-size for other clients
+    return '<font face="${prefs.fontFamily}" data-pt="${prefs.fontSize.toInt()}" style="font-size:${prefs.fontSize.toInt()}pt">$html</font>';
   }
 
   Future<void> _sendText(VeilUserPrefs prefs) async {
@@ -213,17 +214,24 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _sendVideo() async {
     final room = _room;
     if (room == null) return;
-    final result = await FilePicker.platform.pickFiles(type: FileType.video, withData: true);
-    if (result == null || result.files.isEmpty) return;
-    final file = result.files.first;
-    if (file.bytes == null) return;
+    // Use ImagePicker so we never load the whole file into memory upfront
+    final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
+    if (picked == null) return;
+    final f = File(picked.path);
+    final size = await f.length();
+    if (size > 100 * 1024 * 1024) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Video too large (max 100 MB)'), duration: Duration(seconds: 3)));
+      return;
+    }
     setState(() => _sending = true);
     try {
-      final ext  = file.extension?.toLowerCase() ?? 'mp4';
+      final bytes = await f.readAsBytes();
+      final ext  = picked.name.split('.').last.toLowerCase();
       final mime = ext == 'webm' ? 'video/webm'
                  : ext == 'mov'  ? 'video/quicktime'
                  : 'video/mp4';
-      await room.sendFileEvent(MatrixFile(bytes: file.bytes!, name: file.name, mimeType: mime));
+      await room.sendFileEvent(MatrixFile(bytes: bytes, name: picked.name, mimeType: mime));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to send video: $e'), duration: const Duration(seconds: 4)));
@@ -237,7 +245,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (room == null) return;
     final tc   = context.read<VeilUserPrefs>().colors;
     final ctrl = TextEditingController();
-    await showDialog<void>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: tc.inputBg,
@@ -253,22 +261,22 @@ class _ChatScreenState extends State<ChatScreen> {
             enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: tc.toolbarActive)),
             focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: tc.toolbarActive, width: 2)),
           ),
-          onSubmitted: (_) => Navigator.pop(ctx),
+          onSubmitted: (_) => Navigator.pop(ctx, true),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () => Navigator.pop(ctx, false),
             child: Text('Cancel', style: TextStyle(color: tc.previewText))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: tc.badgeBg, foregroundColor: tc.badgeText),
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Invite')),
         ],
       ),
     );
     final input = ctrl.text.trim();
     ctrl.dispose();
-    if (input.isEmpty) return;
+    if (confirmed != true || input.isEmpty) return;
     String userId = input;
     if (!userId.startsWith('@')) userId = '@$userId:veilmsg.com';
     else if (!userId.contains(':')) userId = '$userId:veilmsg.com';
@@ -302,14 +310,24 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _sendFile() async {
     final room = _room;
     if (room == null) return;
-    final result = await FilePicker.platform.pickFiles(withData: true);
+    // withData: false — read from disk path to avoid OOM on large files
+    final result = await FilePicker.platform.pickFiles(withData: false);
     if (result == null || result.files.isEmpty) return;
     final file = result.files.first;
-    if (file.bytes == null) return;
+    final path = file.path;
+    if (path == null) return;
+    final f = File(path);
+    final size = await f.length();
+    if (size > 100 * 1024 * 1024) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('File too large (max 100 MB)'), duration: Duration(seconds: 3)));
+      return;
+    }
     setState(() => _sending = true);
     try {
+      final bytes = await f.readAsBytes();
       await room.sendFileEvent(MatrixFile(
-        bytes: file.bytes!, name: file.name,
+        bytes: bytes, name: file.name,
         mimeType: file.extension != null ? 'application/${file.extension}' : 'application/octet-stream'));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
@@ -526,7 +544,6 @@ class _ChatScreenState extends State<ChatScreen> {
                             final isMe  = event.senderId == myId;
                             return GestureDetector(
                               onLongPress: () => _showMessageMenu(context, event),
-                              onTap: () => _inputFocus.requestFocus(),
                               child: _AimMessageLine(
                                 event: event, isMe: isMe, tc: tc,
                                 myFontFamily: prefs.fontFamily,
@@ -1077,8 +1094,8 @@ class _AimMessageLine extends StatelessWidget {
   // ── Network image with tap-to-enlarge and save ─────────────────────────────
   Widget _buildNetworkImage(BuildContext context, {required double height}) {
     final client = event.room.client;
-    String? mxcUrl;
     final fileMap = event.content['file'];
+    String? mxcUrl;
     if (fileMap is Map) mxcUrl = fileMap['url'] as String?;
     mxcUrl ??= event.content['url'] as String?;
 
@@ -1089,6 +1106,23 @@ class _AimMessageLine extends StatelessWidget {
     final mxcUri  = Uri.parse(mxcUrl);
     final httpUrl = '${client.homeserver}/_matrix/media/v3/download/${mxcUri.host}${mxcUri.path}';
     final token   = client.accessToken ?? '';
+
+    // E2E encrypted images: the media bytes at the URL are AES-CTR encrypted;
+    // Image.network can't display them. Show a tap-to-open indicator instead.
+    final isEncrypted = fileMap is Map && (fileMap as Map)['key'] is Map;
+    if (isEncrypted) {
+      return Container(
+        height: height,
+        alignment: Alignment.centerLeft,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.lock, size: 18, color: tc.previewText),
+          const SizedBox(width: 6),
+          Text('Encrypted image',
+              style: TextStyle(fontStyle: FontStyle.italic, color: tc.previewText)),
+        ]),
+      );
+    }
+
     // Disappearing images cannot be saved
     final isDisappearing = event.content['veil_expire_at'] != null;
 
@@ -1198,16 +1232,17 @@ class _AimMessageLine extends StatelessWidget {
       child: Container(
         constraints: const BoxConstraints(maxWidth: 280),
         decoration: BoxDecoration(
-          color: Colors.black45,
+          color: tc.rowBg.withAlpha(200),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white24),
+          border: Border.all(color: tc.divider == Colors.transparent
+              ? tc.nameText.withAlpha(30) : tc.divider),
         ),
         padding: const EdgeInsets.all(12),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.play_circle_outline, color: Colors.white, size: 36),
+          Icon(Icons.play_circle_outline, color: tc.toolbarActive, size: 36),
           const SizedBox(width: 10),
           Flexible(child: Text(event.body,
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
+            style: TextStyle(color: tc.previewText, fontSize: 14),
             overflow: TextOverflow.ellipsis)),
         ]),
       ),
@@ -1381,3 +1416,4 @@ class _BarBtn extends StatelessWidget {
     ),
   );
 }
+

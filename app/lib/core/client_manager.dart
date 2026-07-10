@@ -42,12 +42,16 @@ class ClientManager extends ChangeNotifier {
 
     _client.onLoginStateChanged.stream.listen((_) => notifyListeners());
     _client.onSync.stream.listen((_) async {
+      // Guard: userID may be null if sync fires before login fully completes.
+      final myId = _client.userID;
+      if (myId == null) { notifyListeners(); return; }
+
       // Detect new incoming invites and fire a local notification for each.
       for (final room in _client.rooms) {
         if (room.membership == Membership.invite) {
           if (!_knownInvites.contains(room.id)) {
             _knownInvites.add(room.id);
-            final inviterEvent = room.getState(EventTypes.RoomMember, _client.userID!);
+            final inviterEvent = room.getState(EventTypes.RoomMember, myId);
             final inviterId = inviterEvent?.senderId ?? '';
             final inviterName = inviterId.isNotEmpty
                 ? inviterId.split(':').first.replaceFirst('@', '')
@@ -189,9 +193,18 @@ class ClientManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<Room> get rooms => _client.rooms
-      .where((r) => r.membership == Membership.join)
-      .toList();
+  List<Room> get rooms {
+    final joined = _client.rooms
+        .where((r) => r.membership == Membership.join)
+        .toList();
+    // Sort by most-recent message so the buddy list is stable after restart
+    joined.sort((a, b) {
+      final ta = a.lastEvent?.originServerTs ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final tb = b.lastEvent?.originServerTs ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return tb.compareTo(ta);
+    });
+    return joined;
+  }
 
   List<Room> get inviteRooms => _client.rooms
       .where((r) => r.membership == Membership.invite)

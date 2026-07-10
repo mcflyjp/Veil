@@ -48,6 +48,13 @@ class _NewChatScreenState extends State<NewChatScreen> {
           name: input,
           preset: CreateRoomPreset.privateChat,
           invite: _members,
+          // Enable E2E encryption for group chats (matches DM behaviour)
+          initialState: [
+            StateEvent(
+              type: EventTypes.Encryption,
+              content: {'algorithm': AlgorithmTypes.megolmV1AesSha2},
+            ),
+          ],
         );
       } else {
         // Resolve screen name → full Matrix ID

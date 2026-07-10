@@ -5,6 +5,7 @@ import 'core/client_manager.dart';
 import 'core/notification_service.dart';
 import 'core/router.dart';
 import 'core/aim_theme.dart';
+import 'core/veil_theme.dart';
 import 'core/veil_user_prefs.dart';
 
 void main() async {
@@ -65,7 +66,6 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: clientManager),
-        ChangeNotifierProvider(create: (_) => ThemeModeNotifier()),
         ChangeNotifierProvider.value(value: prefs),
       ],
       child: VeilApp(clientManager: clientManager),
@@ -93,24 +93,19 @@ class _VeilAppState extends State<VeilApp> {
 
   @override
   Widget build(BuildContext context) {
-    final themeNotifier = context.watch<ThemeModeNotifier>();
+    final prefs = context.watch<VeilUserPrefs>();
+    final tc = prefs.colors;
+    // dark/glass Veil themes use dark Material baseline; aim/light use light
+    final isDark = prefs.theme == VeilThemeMode.dark || prefs.theme == VeilThemeMode.glass;
     return MaterialApp.router(
       title: 'Veil',
-      theme: AimTheme.light,
-      darkTheme: AimTheme.dark,
-      themeMode: themeNotifier.mode,
+      // Override scaffold background so Navigator transitions don't flash the
+      // wrong color (e.g. AIM gray on glass/dark themes).
+      theme: AimTheme.light.copyWith(scaffoldBackgroundColor: tc.scaffold),
+      darkTheme: AimTheme.dark.copyWith(scaffoldBackgroundColor: tc.scaffold),
+      themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
       routerConfig: _router,
       debugShowCheckedModeBanner: false,
     );
-  }
-}
-
-class ThemeModeNotifier extends ChangeNotifier {
-  ThemeMode _mode = ThemeMode.system;
-  ThemeMode get mode => _mode;
-
-  void toggle() {
-    _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
-    notifyListeners();
   }
 }

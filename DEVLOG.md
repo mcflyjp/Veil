@@ -7,6 +7,38 @@ Entries are added every session. Nothing gets done without a log entry.
 
 ---
 
+## 2026-07-10 — v0.1.24 (14-issue audit fix pass)
+
+**[FIX] Video + file OOM crash** — `_sendVideo` now uses `ImagePicker.pickVideo()` instead of `FilePicker withData: true`. `_sendFile` uses `withData: false` + `File.readAsBytes()`. Both enforce a 100 MB cap before reading. Previously any video would crash immediately.
+
+**[FIX] Gray screen during navigation** — `MaterialApp` now watches `VeilUserPrefs` and overrides `scaffoldBackgroundColor` in both `theme` and `darkTheme` to match the active Veil theme. `ThemeMode` is also derived from the Veil theme (dark/glass → `ThemeMode.dark`; aim/light → `ThemeMode.light`). `ThemeModeNotifier` removed — it was never toggled and served no purpose.
+
+**[FIX] Add-member Cancel still ran invite** — `_addMember` dialog now returns `bool?`; Cancel pops `false`, Invite pops `true`. The invite only fires if `confirmed == true`.
+
+**[FIX] Group chats unencrypted** — `createRoom` now passes `initialState: [StateEvent(type: EventTypes.Encryption, ...)]` so group chats use Megolm E2E, matching DM behaviour.
+
+**[FIX] Presence dot hardcoded to "online" for all rooms** — `_Avatar` widget now accepts `isGroup`; the presence dot is hidden for non-DM rooms (groups have no meaningful per-user presence indicator).
+
+**[FIX] Muted state flash on buddy list open** — `BuddyListScreen.initState` now pre-loads all `conv_*_muted` SharedPrefs keys so the cache is warm before the first build.
+
+**[FIX] VeilUserPrefs synced on every Matrix sync** — `_pullFromMatrix` now computes a content snapshot string and returns early if unchanged. Avoids `_saveLocal()` write and `notifyListeners()` on every no-op sync.
+
+**[FIX] `userID!` null crash in sync listener** — `client_manager.dart` now guards against `userID == null` at the top of the onSync handler and returns early rather than throwing.
+
+**[FIX] Buddy list unsorted after restart** — `ClientManager.rooms` now sorts by `lastEvent.originServerTs` descending so the list order is stable.
+
+**[FIX] E2E encrypted images show broken icon** — `_buildNetworkImage` now detects encrypted images (has `content['file']['key']`) and shows a `🔒 Encrypted image` text instead of silently failing. Full AES-CTR decryption deferred — matrix SDK v7 doesn't expose a clean public API for it.
+
+**[FIX] `data-pt` non-standard** — `_buildHtml` now also emits `style="font-size:Xpt"` alongside `data-pt` so other Matrix clients apply the font size. `html_span.dart` now parses `style` attribute as fallback.
+
+**[FIX] No login validation** — `_submit` now validates username and password are non-empty before making any network call.
+
+**[FIX] Video card hardcoded dark colors** — `_buildVideoMessage` now uses `tc.rowBg`, `tc.toolbarActive`, and `tc.previewText` instead of hardcoded `Colors.black45` / `Colors.white`.
+
+**[FIX] Message tap blocks text selection** — removed `onTap: () => _inputFocus.requestFocus()` from message GestureDetectors. Keyboard management is handled by `focusNode` on the TextField and `ScrollViewKeyboardDismissBehavior.manual` on the ListView.
+
+---
+
 ## 2026-05-22
 
 **[DECISION] App named "Veil"**

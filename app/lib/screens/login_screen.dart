@@ -28,13 +28,23 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submit() async {
+    final username = _usernameCtrl.text.trim();
+    final password = _passwordCtrl.text;
+    if (username.isEmpty) {
+      setState(() => _error = 'Screen name is required');
+      return;
+    }
+    if (password.isEmpty) {
+      setState(() => _error = 'Password is required');
+      return;
+    }
     setState(() { _loading = true; _error = null; });
     final mgr = context.read<ClientManager>();
     try {
       if (_isRegistering) {
-        await mgr.register(_usernameCtrl.text.trim(), _passwordCtrl.text, _displayNameCtrl.text.trim());
+        await mgr.register(username, password, _displayNameCtrl.text.trim());
       } else {
-        await mgr.login(_usernameCtrl.text.trim(), _passwordCtrl.text);
+        await mgr.login(username, password);
       }
       if (mounted) context.go('/buddylist');
     } catch (e) {
