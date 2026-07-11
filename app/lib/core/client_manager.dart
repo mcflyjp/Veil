@@ -188,7 +188,30 @@ class ClientManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Timeline cache ─────────────────────────────────────────────────────
+  // Keyed by room ID. Keeps Timeline alive across ChatScreen dispose/recreate
+  // so we never call room.getTimeline() twice on the same room, which can
+  // deadlock if a prior requestHistory() is still in flight.
+  final _timelineCache = <String, Timeline>{};
+
+  Timeline? getTimeline(String roomId) => _timelineCache[roomId];
+
+  Future<Timeline> getOrCreateTimeline(String roomId) async {
+    final cached = _timelineCache[roomId];
+    if (cached != null) return cached;
+    final room = roomById(roomId);
+    if (room == null) throw Exception('Room $roomId not found');
+    final tl = await room.getTimeline(onUpdate: notifyListeners);
+    _timelineCache[roomId] = tl;
+    await tl.requestHistory(historyCount: 50);
+    return tl;
+  }
+
   Future<void> logout() async {
+    for (final tl in _timelineCache.values) {
+      tl.cancelSubscriptions();
+    }
+    _timelineCache.clear();
     await _client.logout();
     notifyListeners();
   }

@@ -1,5 +1,13 @@
 # Veil — Development Log
 
+## 2026-07-10 — v0.1.25 (navigation freeze fix)
+
+**[FIX] Chat freeze when re-entering the same conversation** — Root cause: `ChatScreen.dispose()` called `timeline.cancelSubscriptions()`, then re-entering the same room triggered `room.getTimeline()` + `requestHistory()` again. If the prior `requestHistory` HTTP call was still in-flight, the matrix SDK deadlocked on an internal room lock, freezing the screen permanently.
+
+Fix: `ClientManager` now owns a per-room `Timeline` cache (`_timelineCache`). `getOrCreateTimeline(roomId)` returns the cached timeline instantly on re-entry, never calling `getTimeline()` twice on the same room. `ChatScreen.dispose()` no longer cancels the timeline. On re-entry, `initState()` reads the cached timeline synchronously — no loading spinner, no freeze, messages appear instantly. Timeline cleanup happens only on `logout()`.
+
+---
+
 **Format**: `[YYYY-MM-DD] TYPE: Description`
 **Types**: `DECISION` `ADD` `REMOVE` `FIX` `INFRA` `COST` `LAUNCH` `QUESTION`
 

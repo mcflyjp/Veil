@@ -61,7 +61,16 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     NotificationService.instance.activeRoomId = Uri.decodeComponent(widget.roomId);
     _inputCtrl.addListener(_onTypingChanged);
-    _loadTimeline();
+
+    // If the timeline is already cached, use it immediately — no spinner, no freeze.
+    final cached = context.read<ClientManager>().getTimeline(Uri.decodeComponent(widget.roomId));
+    if (cached != null) {
+      _timeline = cached;
+      _loadingTimeline = false;
+      _setReadMarker();
+    } else {
+      _loadTimeline();
+    }
   }
 
   @override
@@ -69,7 +78,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _typingTimer?.cancel();
     _room?.setTyping(false);
     NotificationService.instance.activeRoomId = null;
-    _timeline?.cancelSubscriptions();
+    // Timeline is owned by ClientManager — do NOT cancel it here.
+    // Cancelling would break re-entry into the same chat without a full reload.
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     _inputFocus.dispose();
@@ -77,13 +87,23 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _loadTimeline() async {
+    final mgr    = context.read<ClientManager>();
+    final roomId = Uri.decodeComponent(widget.roomId);
+    try {
+      final tl = await mgr.getOrCreateTimeline(roomId);
+      if (!mounted) return;
+      setState(() { _timeline = tl; _loadingTimeline = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loadingTimeline = false);
+    }
+    await _setReadMarker();
+  }
+
+  Future<void> _setReadMarker() async {
     final room = _room;
-    if (room == null) return;
-    final timeline = await room.getTimeline(onUpdate: () => setState(() {}));
-    setState(() { _timeline = timeline; _loadingTimeline = false; });
-    await timeline.requestHistory(historyCount: 50);
-    // Send read receipt for latest message
-    final latest = timeline.events.where((e) => e.type == EventTypes.Message).firstOrNull;
+    final tl   = _timeline;
+    if (room == null || tl == null) return;
+    final latest = tl.events.where((e) => e.type == EventTypes.Message).firstOrNull;
     if (latest != null) {
       try { await room.setReadMarker(latest.eventId); } catch (_) {}
     }
