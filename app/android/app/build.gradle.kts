@@ -39,26 +39,6 @@ android {
         }
     }
 
-    applicationVariants.all {
-        val variant = this
-        variant.outputs.all {
-            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output.outputFileName = "veilmsg.apk"
-        }
-    }
-}
-
-// After Flutter copies the APK to flutter-apk/, also place a veilmsg.apk there.
-tasks.whenTaskAdded {
-    if (name.startsWith("assemble")) {
-        doLast {
-            val src = File(project.layout.buildDirectory.get().asFile, "outputs/apk/debug/veilmsg.apk")
-            if (!src.exists()) return@doLast
-            val dst = File(project.layout.buildDirectory.get().asFile, "outputs/flutter-apk/veilmsg.apk")
-            dst.parentFile.mkdirs()
-            src.copyTo(dst, overwrite = true)
-        }
-    }
 }
 
 dependencies {

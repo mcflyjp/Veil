@@ -537,9 +537,9 @@ class _BottomToolbar extends StatelessWidget {
 
     return Container(
       height: 68 + bottomPad,
-      color: tc.toolbarBg,
       padding: EdgeInsets.only(left: 8, right: 8, bottom: bottomPad),
       decoration: BoxDecoration(
+        color: tc.toolbarBg,
         border: Border(top: BorderSide(color: tc.divider == Colors.transparent
             ? Colors.white.withAlpha(20) : tc.divider)),
       ),
