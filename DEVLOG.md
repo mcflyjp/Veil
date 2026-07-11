@@ -1,5 +1,15 @@
 # Veil — Development Log
 
+## 2026-07-10 — v0.1.28 (underlines + gray flash final fix)
+
+**[FIX] Yellow underlines on all text** — v0.1.27's Stack approach left `BuddyListScreen` without a `Material` ancestor, so Flutter fell back to its default `TextStyle` which has `TextDecoration.underline` and a yellow decoration color. Fixed by wrapping the `BuddyListScreen` in `Material` inside the Stack.
+
+**[FIX] Gray flash still present after Stack switch** — The `child` widget passed to `SplitShell` from `ShellRoute` is go_router's internal sub-Navigator, which was still running a slide-in transition animation even inside our Stack. Fixed by switching all shell sub-routes from `builder:` to `pageBuilder:` with `NoTransitionPage`, so the Navigator performs no animation on route changes.
+
+**[INFRA] APK releases** — Stop renaming APK at any stage. CI builds `flutter build apk --release` and attaches `app-release.apk` to the GitHub release when a `v*` tag is pushed. Never attach debug APKs or rename via Gradle/cp.
+
+---
+
 ## 2026-07-10 — v0.1.27 (gray freeze root fix)
 
 **[FIX] Gray screen freeze on chat re-entry — root cause eliminated** — The freeze was caused by go_router's page-transition Navigator inside `SplitShell` getting stuck mid-animation when navigating chat → buddy list → same chat. Fixed by replacing the narrow-screen Navigator path with a plain `Stack`: `BuddyListScreen` is always mounted underneath, and the chat/settings/new-chat screen sits on top as a direct Material overlay — no transition animation, no Navigator, no freeze.
