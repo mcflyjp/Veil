@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -48,10 +49,8 @@ class _ChatScreenState extends State<ChatScreen> {
   int _disappearAfterSecs = 0;
 
   String get _disappearLabel => _disappearAfterSecs == 0 ? ''
-      : _disappearAfterSecs < 60   ? '${_disappearAfterSecs}s'
-      : _disappearAfterSecs < 3600 ? '${_disappearAfterSecs ~/ 60}m'
-      : _disappearAfterSecs < 86400 ? '${_disappearAfterSecs ~/ 3600}h'
-      : '${_disappearAfterSecs ~/ 86400}d';
+      : _disappearAfterSecs < 60 ? '${_disappearAfterSecs}s'
+      : '${_disappearAfterSecs ~/ 60}m';
 
   Room? get _room =>
       context.read<ClientManager>().roomById(Uri.decodeComponent(widget.roomId));
@@ -61,6 +60,7 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     NotificationService.instance.activeRoomId = Uri.decodeComponent(widget.roomId);
     _inputCtrl.addListener(_onTypingChanged);
+    context.read<ClientManager>().addListener(_scheduleVisibleDisappearing);
 
     // If the timeline is already cached, use it immediately — no spinner, no freeze.
     final cached = context.read<ClientManager>().getTimeline(Uri.decodeComponent(widget.roomId));
@@ -68,6 +68,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _timeline = cached;
       _loadingTimeline = false;
       _setReadMarker();
+      _scheduleVisibleDisappearing();
     } else {
       _loadTimeline();
     }
@@ -78,6 +79,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _typingTimer?.cancel();
     _room?.setTyping(false);
     NotificationService.instance.activeRoomId = null;
+    context.read<ClientManager>().removeListener(_scheduleVisibleDisappearing);
     // Timeline is owned by ClientManager — do NOT cancel it here.
     // Cancelling would break re-entry into the same chat without a full reload.
     _inputCtrl.dispose();
@@ -97,6 +99,45 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) setState(() => _loadingTimeline = false);
     }
     await _setReadMarker();
+    _scheduleVisibleDisappearing();
+  }
+
+  // Called on every ClientManager notification (each sync) while this chat is open.
+  // Starts the disappear timer for any messages with veil_disappear_secs that haven't
+  // been scheduled yet. Idempotent — DisappearingMessageService guards against
+  // double-scheduling. This is what makes the timer "start on view": no timer is
+  // started until the user actually opens the conversation.
+  void _scheduleVisibleDisappearing() => _doScheduleVisible();
+
+  Future<void> _doScheduleVisible() async {
+    final timeline = _timeline;
+    final room = _room;
+    if (timeline == null || room == null) return;
+    if (!mounted) return;
+    final client = context.read<ClientManager>().client;
+    for (final event in List.of(timeline.events)) {
+      if (event.type != EventTypes.Message) continue;
+      final content = event.content;
+      final secs    = content['veil_disappear_secs'];
+      final expAt   = content['veil_expire_at'];
+      if (secs == null && expAt == null) continue;
+      if (DisappearingMessageService.instance.isArmed(event.eventId)) continue;
+      final Duration dur;
+      if (secs is int) {
+        dur = Duration(seconds: secs);
+      } else if (expAt is int) {
+        final ms = expAt - DateTime.now().millisecondsSinceEpoch;
+        if (ms <= 0) continue;
+        dur = Duration(milliseconds: ms);
+      } else {
+        continue;
+      }
+      if (!mounted) return;
+      await DisappearingMessageService.instance.schedule(
+        eventId: event.eventId, roomId: room.id,
+        after: dur, client: client,
+      );
+    }
   }
 
   Future<void> _setReadMarker() async {
@@ -176,8 +217,7 @@ class _ChatScreenState extends State<ChatScreen> {
           'formatted_body': html,
         },
         if (_disappearAfterSecs > 0)
-          'veil_expire_at': DateTime.now().millisecondsSinceEpoch +
-              (_disappearAfterSecs * 1000),
+          'veil_disappear_secs': _disappearAfterSecs,
       });
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
@@ -366,13 +406,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _pickDisappearTimer() async {
     const options = [
-      (0,      'Off'),
-      (30,     '30 seconds'),
-      (300,    '5 minutes'),
-      (1800,   '30 minutes'),
-      (3600,   '1 hour'),
-      (86400,  '24 hours'),
-      (604800, '7 days'),
+      (0,  'Off'),
+      (3,  '3 seconds'),
+      (5,  '5 seconds'),
+      (10, '10 seconds'),
+      (60, '1 minute'),
     ];
     final tc = context.read<VeilUserPrefs>().colors;
     await showModalBottomSheet<void>(
@@ -453,8 +491,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _pickEventDisappearTimer(BuildContext ctx, Event event, Room room) async {
     const options = [
-      (30, '30 seconds'), (60, '1 minute'), (300, '5 minutes'),
-      (1800, '30 minutes'), (3600, '1 hour'), (86400, '24 hours'), (604800, '7 days'),
+      (3,  '3 seconds'),
+      (5,  '5 seconds'),
+      (10, '10 seconds'),
+      (60, '1 minute'),
     ];
     final picked = await showDialog<int>(
       context: ctx,
@@ -950,6 +990,10 @@ class _AimMessageLine extends StatelessWidget {
   String get _senderName =>
       event.senderId.split(':').first.replaceFirst('@', '');
 
+  bool get _isDisappearing =>
+      event.content['veil_disappear_secs'] != null ||
+      event.content['veil_expire_at'] != null;
+
   @override
   Widget build(BuildContext context) {
     // Glass theme gets modern bubble layout
@@ -1013,6 +1057,11 @@ class _AimMessageLine extends StatelessWidget {
                 style: const TextStyle(fontSize: 11, color: Colors.white54, fontWeight: FontWeight.w600)),
             ),
           bubble,
+          if (_isDisappearing && event.messageType != MessageTypes.Image)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
+              child: _DisappearingCountdown(eventId: event.eventId),
+            ),
           Padding(
             padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
             child: Text(timeStr, style: const TextStyle(fontSize: 10, color: Colors.white38)),
@@ -1097,17 +1146,23 @@ class _AimMessageLine extends StatelessWidget {
       final spans = htmlToSpans(formattedBody, base);
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
-        child: RichText(text: TextSpan(children: [timeSpan, nameSpan, ...spans])),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          RichText(text: TextSpan(children: [timeSpan, nameSpan, ...spans])),
+          if (_isDisappearing) _DisappearingCountdown(eventId: event.eventId),
+        ]),
       );
     }
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: RichText(text: TextSpan(children: [
-        timeSpan, nameSpan,
-        TextSpan(text: event.body,
-          style: TextStyle(fontFamily: bodyFamily, fontSize: bodySize, color: tc.nameText)),
-      ])),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        RichText(text: TextSpan(children: [
+          timeSpan, nameSpan,
+          TextSpan(text: event.body,
+            style: TextStyle(fontFamily: bodyFamily, fontSize: bodySize, color: tc.nameText)),
+        ])),
+        if (_isDisappearing) _DisappearingCountdown(eventId: event.eventId),
+      ]),
     );
   }
 
@@ -1144,7 +1199,8 @@ class _AimMessageLine extends StatelessWidget {
     }
 
     // Disappearing images cannot be saved
-    final isDisappearing = event.content['veil_expire_at'] != null;
+    final isDisappearing = event.content['veil_disappear_secs'] != null ||
+        event.content['veil_expire_at'] != null;
 
     final img = Image.network(
       httpUrl,
@@ -1154,6 +1210,32 @@ class _AimMessageLine extends StatelessWidget {
       errorBuilder: (_, __, ___) => Text('[Image — encrypted or unavailable]',
         style: TextStyle(fontSize: 14, fontStyle: FontStyle.italic, color: tc.previewText)),
     );
+
+    // Disappearing images: blur + clock overlay (Telegram-style).
+    // Tapping still opens the unblurred fullscreen dialog.
+    final Widget thumbnail = isDisappearing
+        ? SizedBox(
+            height: height, width: 250,
+            child: ClipRect(
+              child: Stack(fit: StackFit.expand, children: [
+                ImageFiltered(
+                  imageFilter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                  child: Image.network(httpUrl,
+                    headers: {'Authorization': 'Bearer $token'},
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        Container(color: Colors.grey.shade900)),
+                ),
+                Container(color: Colors.black.withAlpha(70)),
+                Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.timer, color: Colors.white, size: 40),
+                  const SizedBox(height: 6),
+                  _DisappearingCountdown(eventId: event.eventId, color: Colors.white),
+                ])),
+              ]),
+            ),
+          )
+        : img;
 
     return GestureDetector(
       onTap: () => showDialog(
@@ -1222,7 +1304,7 @@ class _AimMessageLine extends StatelessWidget {
           );
         },
       ),
-      child: img,
+      child: thumbnail,
     );
   }
 
@@ -1435,5 +1517,85 @@ class _BarBtn extends StatelessWidget {
       ),
     ),
   );
+}
+
+// ── Disappearing message countdown ────────────────────────────────────────────
+/// Shows a live countdown (⏱ Xs) for a message with a scheduled disappear timer.
+/// Loads the remaining duration from [DisappearingMessageService] asynchronously,
+/// then ticks down every second. Used inside message rows and image overlays.
+class _DisappearingCountdown extends StatefulWidget {
+  final String eventId;
+  final Color color;
+  const _DisappearingCountdown({required this.eventId, this.color = Colors.orange});
+
+  @override
+  State<_DisappearingCountdown> createState() => _DisappearingCountdownState();
+}
+
+class _DisappearingCountdownState extends State<_DisappearingCountdown> {
+  Duration? _remaining;
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRemaining();
+  }
+
+  Future<void> _loadRemaining() async {
+    final r = await DisappearingMessageService.instance.remaining(widget.eventId);
+    if (!mounted) return;
+    if (r == null) {
+      // Timer not started yet — wait briefly for _doScheduleVisible to fire, then retry.
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (!mounted) return;
+      final r2 = await DisappearingMessageService.instance.remaining(widget.eventId);
+      if (!mounted || r2 == null) return;
+      setState(() => _remaining = r2);
+      _startTicker();
+      return;
+    }
+    setState(() => _remaining = r);
+    _startTicker();
+  }
+
+  void _startTicker() {
+    final r = _remaining;
+    if (r == null || r <= Duration.zero) return;
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) { _ticker?.cancel(); return; }
+      setState(() {
+        final cur = _remaining;
+        if (cur != null && cur.inSeconds > 0) {
+          _remaining = cur - const Duration(seconds: 1);
+        } else {
+          _ticker?.cancel();
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  String _fmt(Duration d) {
+    if (d.inSeconds <= 0) return '0s';
+    if (d.inSeconds < 60) return '${d.inSeconds}s';
+    return '${d.inMinutes}m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = _remaining;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(r == null ? Icons.timer_outlined : Icons.timer, size: 12, color: widget.color),
+      const SizedBox(width: 3),
+      Text(r == null ? '…' : _fmt(r),
+          style: TextStyle(fontSize: 11, color: widget.color, fontWeight: FontWeight.w600)),
+    ]);
+  }
 }
 

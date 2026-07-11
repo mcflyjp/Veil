@@ -90,25 +90,8 @@ class ClientManager extends ChangeNotifier {
 
     // Reload any persisted per-message disappear timers.
     await DisappearingMessageService.instance.loadAndReschedule(_client);
-
-    // Auto-schedule disappearing for incoming messages that carry veil_expire_at.
-    _client.onEvent.stream.listen((update) async {
-      if (update.type != EventUpdateType.timeline) return;
-      final raw = update.content;
-      if (raw['type'] != 'm.room.message') return;
-      final expireAt = (raw['content'] as Map?)?['veil_expire_at'] as int?;
-      if (expireAt == null) return;
-      final remaining = expireAt - DateTime.now().millisecondsSinceEpoch;
-      if (remaining <= 0) return;
-      final eventId = raw['event_id'] as String?;
-      if (eventId == null) return;
-      await DisappearingMessageService.instance.schedule(
-        eventId: eventId,
-        roomId: update.roomID,
-        after: Duration(milliseconds: remaining),
-        client: _client,
-      );
-    });
+    // Timers for new messages are scheduled by ChatScreen when the user opens
+    // and views the conversation (view-triggered, not send-triggered).
 
     _isReady = true;
     notifyListeners();

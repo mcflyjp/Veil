@@ -1,5 +1,17 @@
 # Veil — Development Log
 
+## 2026-07-11 — v0.1.31 (view-triggered disappearing messages + visual indicator)
+
+**[CHANGE] Disappearing timer starts on VIEW, not on send** — Messages now store `veil_disappear_secs` (duration in seconds) instead of `veil_expire_at` (absolute timestamp set at send time). The timer begins when the **recipient opens the chat** — `ChatScreen.initState` and `_loadTimeline` call `_doScheduleVisible()`, which scans the timeline and calls `DisappearingMessageService.schedule()` for any unscheduled disappearing messages. A `ClientManager.addListener` keeps this running for messages that arrive while the chat is open. The sender's timer starts on the same event (they're already viewing the chat). Backward-compatible: old `veil_expire_at` messages still schedule with the remaining duration.
+
+**[CHANGE] New time options** — Timer picker now offers 3 seconds, 5 seconds, 10 seconds, 1 minute (replaces the old 30s / 5m / 30m / 1h / 24h / 7d options). Both the compose-time picker and the long-press per-message picker use these options.
+
+**[ADD] Clock indicator on disappearing text messages** — Both AIM flat and Glass bubble layouts now show a small `⏱ Xs` badge below any message with `veil_disappear_secs`. The badge is a live countdown (ticks every second) powered by `_DisappearingCountdown`, a `StatefulWidget` that reads the remaining time from `DisappearingMessageService` asynchronously and starts a `Timer.periodic` for the UI update.
+
+**[ADD] Blur + clock overlay on disappearing images** — Disappearing images are shown blurred (`ImageFilter.blur sigmaX/Y 14`) with a dark overlay, a large `Icons.timer` icon in the centre, and the same `_DisappearingCountdown` widget. Tapping still opens the unblurred fullscreen dialog; the save button is hidden as before.
+
+---
+
 ## 2026-07-11 — v0.1.30 (hide conversations, linked devices, QR sign-in)
 
 **[FIX] Hide Conversation now works** — Long-pressing a conversation and tapping "Hide Conversation" now actually removes the room from the buddy list. Root cause: `prefs.setHidden(true)` was being called correctly, but the buddy list filter never checked the `hidden` flag. Fixed by loading `SharedPreferences` in `BuddyListScreen` state and reading the `conv_{roomId}_hidden` key synchronously on every rebuild. A "Hidden Chats" footer row appears at the bottom of the buddy list whenever any room is hidden.

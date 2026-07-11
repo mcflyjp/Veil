@@ -11,17 +11,23 @@ class DisappearingMessageService {
   static const _prefix = 'disappear_';
   final Map<String, Timer> _timers = {};
 
-  /// Schedule a message to be redacted after [after].
+  /// Returns true synchronously if [eventId] has an active in-memory timer.
+  bool isArmed(String eventId) => _timers.containsKey(eventId);
+
+  /// Schedule a message to be redacted after [after]. Idempotent — silently
+  /// returns if the timer is already armed so double-calls are safe.
   Future<void> schedule({
     required String eventId,
     required String roomId,
     required Duration after,
     required Client client,
   }) async {
+    if (_timers.containsKey(eventId)) return;
     final expireAt = DateTime.now().add(after).millisecondsSinceEpoch;
+    // Arm the in-memory timer first (sync) so isArmed() returns true immediately.
+    _arm(eventId: eventId, roomId: roomId, expireAt: expireAt, client: client);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('$_prefix$eventId', '$roomId|$expireAt');
-    _arm(eventId: eventId, roomId: roomId, expireAt: expireAt, client: client);
   }
 
   /// On app start, reload any pending timers from SharedPreferences.
