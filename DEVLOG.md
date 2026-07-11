@@ -1,5 +1,11 @@
 # Veil — Development Log
 
+## 2026-07-10 — v0.1.27 (gray freeze root fix)
+
+**[FIX] Gray screen freeze on chat re-entry — root cause eliminated** — The freeze was caused by go_router's page-transition Navigator inside `SplitShell` getting stuck mid-animation when navigating chat → buddy list → same chat. Fixed by replacing the narrow-screen Navigator path with a plain `Stack`: `BuddyListScreen` is always mounted underneath, and the chat/settings/new-chat screen sits on top as a direct Material overlay — no transition animation, no Navigator, no freeze.
+
+---
+
 ## 2026-07-10 — v0.1.26 (Container crash fix)
 
 **[FIX] Buddy list toolbar crash** — `_BottomToolbar` passed `color:` directly to a `Container` that also had `decoration: BoxDecoration(...)`. Flutter asserts that both cannot be set simultaneously; moved the color inside the `BoxDecoration`.

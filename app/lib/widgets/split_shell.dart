@@ -38,13 +38,16 @@ class SplitShell extends StatelessWidget {
       );
     }
 
-    // ── Narrow: buddy list full-screen at root, child otherwise ──────────
-    if (atRoot) {
-      return Scaffold(backgroundColor: tc.scaffold, body: const BuddyListScreen());
-    }
-    // Wrap in Material so the Navigator's background matches the theme
-    // rather than flashing gray during page transitions.
-    return Material(color: tc.scaffold, child: child);
+    // ── Narrow: always keep BuddyListScreen mounted, overlay child on top.
+    // Using Stack bypasses go_router's page-transition Navigator completely,
+    // which was causing the gray freeze when re-entering the same chat.
+    return ColoredBox(
+      color: tc.scaffold,
+      child: Stack(children: [
+        const BuddyListScreen(),
+        if (!atRoot) Material(color: tc.scaffold, child: child),
+      ]),
+    );
   }
 }
 
