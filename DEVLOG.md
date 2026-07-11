@@ -1,5 +1,17 @@
 # Veil — Development Log
 
+## 2026-07-10 — v0.1.29 (definitive gray screen fix)
+
+**[FIX] Gray screen on chat re-entry — root cause found and eliminated**
+
+Two independent causes were both contributing to the gray freeze.
+
+**Cause 1 — Navigator disposed between visits.** `split_shell.dart` used `if (!atRoot)` to conditionally render the go_router Navigator. Flutter's GlobalKey deactivation only preserves a removed widget's state for ONE frame. Since the user always spends more than one frame on the buddy list, the Navigator was fully disposed. On re-entry, a fresh Navigator was created, and its first paint showed `tc.scaffold` (AIM Win98 gray `#D4D0C8`) for a frame before ChatScreen could finish rendering. Fix: replaced `if (!atRoot)` with `Offstage(offstage: atRoot, ...)`. The Navigator now stays in the element tree at all times; when `offstage = true` it is alive-but-hidden, so go_router pushes ChatScreen onto it in the background; when `offstage` flips to `false` the screen is already fully rendered — first visible frame = full chat UI, zero gray.
+
+**Cause 2 — `requestHistory` blocked the timeline before first render.** `getOrCreateTimeline` awaited `requestHistory(historyCount: 50)` before returning. That is a real network call (300ms–2s). During the wait, `_loadingTimeline = true` and ChatScreen rendered as a spinner on the gray AIM scaffold — the user perceived this as a gray freeze on first visit to each room. Fix: made `requestHistory` fire-and-forget. The method now returns the Timeline immediately after `room.getTimeline()` completes (local operation). History streams in via the `onUpdate` callback as the network fetch finishes.
+
+---
+
 ## 2026-07-10 — v0.1.28 (underlines + gray flash final fix)
 
 **[FIX] Yellow underlines on all text** — v0.1.27's Stack approach left `BuddyListScreen` without a `Material` ancestor, so Flutter fell back to its default `TextStyle` which has `TextDecoration.underline` and a yellow decoration color. Fixed by wrapping the `BuddyListScreen` in `Material` inside the Stack.

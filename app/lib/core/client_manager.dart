@@ -203,7 +203,12 @@ class ClientManager extends ChangeNotifier {
     if (room == null) throw Exception('Room $roomId not found');
     final tl = await room.getTimeline(onUpdate: notifyListeners);
     _timelineCache[roomId] = tl;
-    await tl.requestHistory(historyCount: 50);
+    // Fire-and-forget: return the timeline immediately so ChatScreen can render
+    // with whatever events are already in the local DB. New history streams in
+    // via onUpdate as the network fetch completes. Awaiting requestHistory here
+    // was the source of the "gray freeze" — it could block for 300ms–2s on a
+    // real network before the first frame of ChatScreen was ever painted.
+    tl.requestHistory(historyCount: 50).catchError((_) {});
     return tl;
   }
 

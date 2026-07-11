@@ -39,12 +39,23 @@ class SplitShell extends StatelessWidget {
     }
 
     // ── Narrow: BuddyListScreen always mounted; chat overlays on top.
-    // Both branches wrapped in Material so text has a proper style ancestor.
+    // Offstage keeps the go_router Navigator in the element tree at all times
+    // so it is never destroyed between visits. Without this, the Navigator's
+    // GlobalKey deactivation only persists for one frame — the user always
+    // spends more than one frame on the buddy list, so the Navigator was being
+    // disposed and remounted on every re-entry, causing a one-frame gray flash
+    // (tc.scaffold = AIM Win98 gray #D4D0C8) before ChatScreen could paint.
+    // With Offstage the Navigator is alive-but-hidden while at root, so go_router
+    // pushes ChatScreen onto it in the background; by the time offstage flips to
+    // false the screen is already fully rendered — first visible frame = full chat.
     return Material(
       color: tc.scaffold,
       child: Stack(children: [
         const BuddyListScreen(),
-        if (!atRoot) Material(color: tc.scaffold, child: child),
+        Offstage(
+          offstage: atRoot,
+          child: Material(color: tc.scaffold, child: child),
+        ),
       ]),
     );
   }
