@@ -1,5 +1,13 @@
 # Veil — Development Log
 
+## 2026-07-10 — v0.1.26 (Container crash fix)
+
+**[FIX] Buddy list toolbar crash** — `_BottomToolbar` passed `color:` directly to a `Container` that also had `decoration: BoxDecoration(...)`. Flutter asserts that both cannot be set simultaneously; moved the color inside the `BoxDecoration`.
+
+**[INFRA] Reverted Gradle APK rename** — `applicationVariants.all` rename and copy task removed from `build.gradle.kts`. The Gradle-renamed APK bypassed Flutter's final packaging step, producing an APK twice the normal size. Releases now attach `app-debug.apk` directly.
+
+---
+
 ## 2026-07-10 — v0.1.25 (navigation freeze fix)
 
 **[FIX] Chat freeze when re-entering the same conversation** — Root cause: `ChatScreen.dispose()` called `timeline.cancelSubscriptions()`, then re-entering the same room triggered `room.getTimeline()` + `requestHistory()` again. If the prior `requestHistory` HTTP call was still in-flight, the matrix SDK deadlocked on an internal room lock, freezing the screen permanently.
