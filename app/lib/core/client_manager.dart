@@ -273,7 +273,7 @@ class ClientManager extends ChangeNotifier {
   /// Returns all devices registered to the current account.
   Future<List<Device>> getDevices() async {
     final resp = await _client.getDevices();
-    return resp?.devices ?? [];
+    return resp ?? [];
   }
 
   /// Revokes a device using UIA password authentication (server-side session invalidation).
