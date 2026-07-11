@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
@@ -18,6 +19,26 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isRegistering = false;
   bool _loading = false;
   String? _error;
+
+  Future<void> _scanQrCode() async {
+    final token = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => const _QrScannerSheet(),
+    );
+    if (token == null || !mounted) return;
+    setState(() { _loading = true; _error = null; });
+    try {
+      await context.read<ClientManager>().loginWithToken(token);
+      if (mounted) context.go('/buddylist');
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString().replaceAll('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -75,6 +96,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   isDark: isDark,
                   onSubmit: _submit,
                   onToggle: () => setState(() { _isRegistering = !_isRegistering; _error = null; }),
+                  onScanQr: _scanQrCode,
                 ),
               ],
             ),
@@ -95,6 +117,7 @@ class _AimLoginWindow extends StatelessWidget {
   final bool isDark;
   final VoidCallback onSubmit;
   final VoidCallback onToggle;
+  final VoidCallback onScanQr;
 
   const _AimLoginWindow({
     required this.isRegistering,
@@ -106,6 +129,7 @@ class _AimLoginWindow extends StatelessWidget {
     required this.isDark,
     required this.onSubmit,
     required this.onToggle,
+    required this.onScanQr,
   });
 
   @override
@@ -202,6 +226,15 @@ class _AimLoginWindow extends StatelessWidget {
                     style: const TextStyle(fontFamily: 'Arial', fontSize: 11),
                   ),
                 ),
+                if (!isRegistering) ...[
+                  const _OrDivider(),
+                  TextButton.icon(
+                    onPressed: loading ? null : onScanQr,
+                    icon: const Icon(Icons.qr_code_scanner, size: 15),
+                    label: const Text('Sign in by scanning a QR code',
+                        style: TextStyle(fontFamily: 'Arial', fontSize: 11)),
+                  ),
+                ],
               ],
             ),
           ),
@@ -209,6 +242,20 @@ class _AimLoginWindow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _OrDivider extends StatelessWidget {
+  const _OrDivider();
+  @override
+  Widget build(BuildContext context) => Row(children: [
+    const Expanded(child: Divider()),
+    Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Text('or', style: TextStyle(
+          fontFamily: 'Arial', fontSize: 10, color: Colors.grey[500])),
+    ),
+    const Expanded(child: Divider()),
+  ]);
 }
 
 class _FormLabel extends StatelessWidget {
@@ -259,6 +306,60 @@ class _AimRunnerIcon extends StatelessWidget {
         borderRadius: BorderRadius.circular(30),
       ),
       child: const Icon(Icons.lock, color: Colors.white, size: 30),
+    );
+  }
+}
+
+/// Camera QR scanner sheet — returns the raw token string when a code is detected.
+class _QrScannerSheet extends StatefulWidget {
+  const _QrScannerSheet();
+  @override
+  State<_QrScannerSheet> createState() => _QrScannerSheetState();
+}
+
+class _QrScannerSheetState extends State<_QrScannerSheet> {
+  bool _scanned = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.65,
+      child: Column(children: [
+        const SizedBox(height: 12),
+        Container(
+          width: 40, height: 4,
+          decoration: BoxDecoration(
+            color: Colors.grey.withAlpha(100),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text('Scan QR Code',
+            style: TextStyle(fontFamily: 'Arial', fontSize: 16,
+                fontWeight: FontWeight.bold)),
+        const SizedBox(height: 6),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 24),
+          child: Text('Point your camera at the QR code shown on your signed-in device',
+              style: TextStyle(fontFamily: 'Arial', fontSize: 11, color: Colors.grey),
+              textAlign: TextAlign.center),
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.zero,
+            child: MobileScanner(
+              onDetect: (capture) {
+                if (_scanned) return;
+                final token = capture.barcodes.firstOrNull?.rawValue;
+                if (token == null || token.isEmpty) return;
+                _scanned = true;
+                Navigator.pop(context, token);
+              },
+            ),
+          ),
+        ),
+      ]),
     );
   }
 }

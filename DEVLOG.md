@@ -1,5 +1,19 @@
 # Veil — Development Log
 
+## 2026-07-11 — v0.1.30 (hide conversations, linked devices, QR sign-in)
+
+**[FIX] Hide Conversation now works** — Long-pressing a conversation and tapping "Hide Conversation" now actually removes the room from the buddy list. Root cause: `prefs.setHidden(true)` was being called correctly, but the buddy list filter never checked the `hidden` flag. Fixed by loading `SharedPreferences` in `BuddyListScreen` state and reading the `conv_{roomId}_hidden` key synchronously on every rebuild. A "Hidden Chats" footer row appears at the bottom of the buddy list whenever any room is hidden.
+
+**[ADD] Hidden Chats screen** — New screen at `/buddylist/hidden` showing all hidden conversations. Tap a conversation to open it, or tap "Unhide" to bring it back to the main list. Unhiding calls `ClientManager.forceRefresh()` to immediately update the buddy list.
+
+**[ADD] Linked Devices screen** — New screen at `/buddylist/devices` (accessible via Settings → Privacy & Security → Linked Devices). Shows all devices registered to your account with device name, last-seen IP, and last-seen date. Current device is marked with a green "This device" chip. Remove unauthorized devices by tapping the trash icon — requires password re-authentication (UIA via Matrix `m.login.password`), which invalidates the session server-side.
+
+**[ADD] QR code Add Device** — Existing device: Settings → Linked Devices → tap QR icon in header → shows a `qr_flutter`-generated QR code containing a short-lived single-use login token (from `POST /_matrix/client/v3/login/token`). New device: tap "Scan QR Code" on the login screen → `mobile_scanner` opens camera → scans the token → logs in via `m.login.token`. Token expires in ~2 minutes and is single-use.
+
+**[INFRA] Flutter code obfuscation in CI** — Added `--obfuscate --split-debug-info=build/debug-info` to `flutter build apk --release` in `build.yml`. Symbol names in the release APK are now randomised, making static analysis and reverse-engineering significantly harder. Debug symbols are uploaded as a separate build artifact.
+
+---
+
 ## 2026-07-10 — v0.1.29 (definitive gray screen fix)
 
 **[FIX] Gray screen on chat re-entry — root cause found and eliminated**

@@ -267,4 +267,88 @@ class ClientManager extends ChangeNotifier {
     await _client.setProfileField(userId, 'displayname', {'displayname': name});
     notifyListeners();
   }
+
+  // ── Device management ──────────────────────────────────────────────
+
+  /// Returns all devices registered to the current account.
+  Future<List<Device>> getDevices() async {
+    final resp = await _client.getDevices();
+    return resp?.devices ?? [];
+  }
+
+  /// Revokes a device using UIA password authentication (server-side session invalidation).
+  /// Uses two-step raw HTTP: first request gets the UIA session, second authenticates.
+  Future<void> deleteDevice(String deviceId, String password) async {
+    final accessToken = _client.accessToken;
+    final userId = _client.userID;
+    if (accessToken == null || userId == null) throw Exception('Not logged in');
+
+    final uri = Uri.parse('$kHomeserver/_matrix/client/v3/devices/$deviceId');
+    final headers = {
+      'Authorization': 'Bearer $accessToken',
+      'Content-Type': 'application/json',
+    };
+
+    // Step 1: initiate UIA — server responds 401 with session ID
+    final r1 = await http.delete(uri, headers: headers, body: jsonEncode({}));
+    if (r1.statusCode == 200) return;
+    if (r1.statusCode != 401) {
+      final e = jsonDecode(r1.body) as Map<String, Object?>;
+      throw Exception('${e['errcode'] ?? 'ERROR'}: ${e['error'] ?? r1.body}');
+    }
+    final body1 = jsonDecode(r1.body) as Map<String, Object?>;
+    final session = body1['session'] as String?;
+
+    // Step 2: respond with password credential
+    final r2 = await http.delete(uri, headers: headers, body: jsonEncode({
+      'auth': {
+        'type': 'm.login.password',
+        'identifier': {'type': 'm.id.user', 'user': userId},
+        'password': password,
+        if (session != null) 'session': session,
+      },
+    }));
+    if (r2.statusCode != 200) {
+      final e = jsonDecode(r2.body) as Map<String, Object?>;
+      throw Exception('${e['errcode'] ?? 'ERROR'}: ${e['error'] ?? r2.body}');
+    }
+  }
+
+  /// Generates a short-lived single-use login token for QR-code device linking.
+  /// Token is valid for ~2 minutes (Matrix spec 1.7 login token flow).
+  Future<String> requestLoginToken() async {
+    final accessToken = _client.accessToken;
+    if (accessToken == null) throw Exception('Not logged in');
+    final uri = Uri.parse('$kHomeserver/_matrix/client/v3/login/token');
+    final resp = await http.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode({}),
+    );
+    if (resp.statusCode != 200) {
+      final e = jsonDecode(resp.body) as Map<String, Object?>;
+      throw Exception('${e['errcode'] ?? 'ERROR'}: ${e['error'] ?? resp.body}');
+    }
+    final body = jsonDecode(resp.body) as Map<String, Object?>;
+    final token = body['login_token'] as String?;
+    if (token == null) throw Exception('Homeserver did not return a login token');
+    return token;
+  }
+
+  /// Signs in with a QR-code login token (m.login.token).
+  Future<void> loginWithToken(String loginToken) async {
+    await _client.checkHomeserver(Uri.parse(kHomeserver));
+    await _client.login(
+      LoginType.mLoginToken,
+      token: loginToken,
+      initialDeviceDisplayName: 'Veil',
+    );
+    notifyListeners();
+  }
+
+  /// Forces a buddy list rebuild — call after external hidden-state changes.
+  void forceRefresh() => notifyListeners();
 }

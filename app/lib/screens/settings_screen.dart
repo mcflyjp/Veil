@@ -154,6 +154,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     trailing: Text('veilmsg.com',
                         style: TextStyle(fontSize: 14, color: tc.previewText)),
                   ),
+                  _Divider(tc: tc),
+                  _NavRow(
+                    icon: Icons.devices_outlined,
+                    label: 'Linked Devices',
+                    tc: tc,
+                    onTap: () => context.go('/buddylist/devices'),
+                  ),
                 ],
               ),
 
@@ -450,5 +457,28 @@ class _GreenChip extends StatelessWidget {
     child: Text(label,
         style: const TextStyle(color: Colors.white, fontSize: 12,
             fontWeight: FontWeight.bold)),
+  );
+}
+
+class _NavRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VeilThemeColors tc;
+  final VoidCallback onTap;
+  const _NavRow({required this.icon, required this.label, required this.tc, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      child: Row(children: [
+        Icon(icon, size: 20, color: tc.previewText),
+        const SizedBox(width: 14),
+        Expanded(child: Text(label,
+            style: TextStyle(fontSize: 16, color: tc.nameText))),
+        Icon(Icons.chevron_right, size: 20, color: tc.previewText),
+      ]),
+    ),
   );
 }

@@ -5,6 +5,8 @@ import '../screens/login_screen.dart';
 import '../screens/chat_screen.dart';
 import '../screens/new_chat_screen.dart';
 import '../screens/settings_screen.dart';
+import '../screens/hidden_chats_screen.dart';
+import '../screens/linked_devices_screen.dart';
 import '../widgets/split_shell.dart';
 
 /// Instant page swap — no slide/fade animation so there is no gray flash.
@@ -46,6 +48,14 @@ GoRouter buildRouter(ClientManager mgr) => GoRouter(
                 GoRoute(
                   path: 'settings',
                   pageBuilder: (_, __) => _noTransition(const SettingsScreen()),
+                ),
+                GoRoute(
+                  path: 'hidden',
+                  pageBuilder: (_, __) => _noTransition(const HiddenChatsScreen()),
+                ),
+                GoRoute(
+                  path: 'devices',
+                  pageBuilder: (_, __) => _noTransition(const LinkedDevicesScreen()),
                 ),
               ],
             ),

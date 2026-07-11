@@ -12,6 +12,9 @@ import '../core/conversation_prefs.dart';
 import '../core/veil_theme.dart';
 import '../core/veil_user_prefs.dart';
 
+// SharedPreferences key helpers for hidden state (mirrors ConversationPrefs._k)
+String _hiddenKey(String roomId) => 'conv_${roomId}_hidden';
+
 class BuddyListScreen extends StatefulWidget {
   const BuddyListScreen({super.key});
   @override
@@ -20,11 +23,20 @@ class BuddyListScreen extends StatefulWidget {
 
 class _BuddyListScreenState extends State<BuddyListScreen> {
   final Map<String, bool> _mutedCache = {};
+  // SharedPreferences singleton used to read hidden state synchronously on every build.
+  // Loaded once; subsequent reads are in-memory so they never block the UI thread.
+  SharedPreferences? _prefs;
 
   @override
   void initState() {
     super.initState();
     _warmMutedCache();
+    _initPrefs();
+  }
+
+  Future<void> _initPrefs() async {
+    final p = await SharedPreferences.getInstance();
+    if (mounted) setState(() => _prefs = p);
   }
 
   Future<void> _warmMutedCache() async {
@@ -97,6 +109,9 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
         onRefresh: () => setState(() {}),
       ),
     );
+    // After the sheet closes, reload SharedPrefs so hidden changes take effect immediately.
+    _prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() {});
   }
 
   @override
@@ -143,7 +158,11 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
   }
 
   Widget _buildList(BuildContext context, VeilThemeColors tc, List<Room> rooms, List<Room> invites) {
-    if (rooms.isEmpty && invites.isEmpty) {
+    // Filter out hidden rooms (reads from the SharedPrefs singleton synchronously).
+    final visible = rooms.where((r) => !(_prefs?.getBool(_hiddenKey(r.id)) ?? false)).toList();
+    final hasHidden = rooms.any((r) => _prefs?.getBool(_hiddenKey(r.id)) == true);
+
+    if (visible.isEmpty && invites.isEmpty && !hasHidden) {
       return ColoredBox(
         color: tc.listBg,
         child: _EmptyState(tc: tc, onNew: () => context.go('/buddylist/new')),
@@ -170,10 +189,10 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
             )),
           ],
           // ── Conversations ─────────────────────────────────────────
-          if (rooms.isNotEmpty) ...[
-            if (!tc.useGlass) _SectionHeader(tc: tc, count: rooms.length),
+          if (visible.isNotEmpty) ...[
+            if (!tc.useGlass) _SectionHeader(tc: tc, count: visible.length),
             if (tc.useGlass) const SizedBox(height: 4),
-            ...rooms.map((r) => _BuddyRow(
+            ...visible.map((r) => _BuddyRow(
               room: r,
               tc: tc,
               muted: _mutedCache[r.id] ?? false,
@@ -182,6 +201,9 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
               onLongPress: () => _showContextMenu(context, r),
             )),
           ],
+          // ── Hidden chats footer ───────────────────────────────────
+          if (hasHidden)
+            _HiddenChatsFooter(tc: tc, onTap: () => context.go('/buddylist/hidden')),
         ],
       ),
     );
@@ -861,6 +883,35 @@ class _ActionBtn extends StatelessWidget {
       ),
       child: Text(label,
         style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+    ),
+  );
+}
+
+// ── Hidden chats footer ────────────────────────────────────────────────────────
+
+class _HiddenChatsFooter extends StatelessWidget {
+  final VeilThemeColors tc;
+  final VoidCallback onTap;
+  const _HiddenChatsFooter({required this.tc, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(
+          color: tc.divider == Colors.transparent
+              ? tc.nameText.withAlpha(15) : tc.divider,
+        )),
+      ),
+      child: Row(children: [
+        Icon(Icons.visibility_off_outlined, size: 18, color: tc.previewText),
+        const SizedBox(width: 12),
+        Expanded(child: Text('Hidden Chats',
+            style: TextStyle(fontSize: 15, color: tc.previewText))),
+        Icon(Icons.chevron_right, size: 18, color: tc.previewText),
+      ]),
     ),
   );
 }
