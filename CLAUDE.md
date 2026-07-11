@@ -17,22 +17,21 @@ cd app
 flutter build apk --debug
 ```
 
-### APK output — ALWAYS attach as `veilmsg.apk`
+### APK output — attach as-is, NO renaming
 Flutter outputs the debug APK to:
 ```
 app/build/app/outputs/flutter-apk/app-debug.apk
 ```
 
-Do NOT rename inside Gradle (that produces a larger, differently-packaged APK).
-Instead, copy the file to a temp path named `veilmsg.apk` when creating the release:
+**Do NOT rename the APK** — not in Gradle, not via cp. Renaming has
+consistently produced APKs twice the normal size with runtime bugs.
+Attach `app-debug.apk` directly to GitHub releases.
 
 ### Create a GitHub release
 ```bash
-cp "app/build/app/outputs/flutter-apk/app-debug.apk" veilmsg.apk
-gh release create vX.Y.Z veilmsg.apk \
+gh release create vX.Y.Z "app/build/app/outputs/flutter-apk/app-debug.apk" \
   --title "Veil vX.Y.Z" \
   --notes "..."
-rm veilmsg.apk
 ```
 
 ### Version bump
