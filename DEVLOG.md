@@ -1,5 +1,13 @@
 # Veil — Development Log
 
+## 2026-07-13 — v0.1.32 (gray screen regression fix)
+
+**[FIX] Gray screen on chat re-entry (regression from v0.1.31)** — v0.1.31 added `ClientManager.addListener` / `removeListener` calls in `_ChatScreenState`. The `removeListener` was called inside `dispose()` via `context.read<ClientManager>()`. In Flutter, `deactivate()` is already called by the time `dispose()` runs, making the `BuildContext` stale — calling `context.read()` there can throw, preventing `super.dispose()` from ever running and leaving the widget in a partially-disposed state. On re-entry to the same chat, the Offstage Navigator encountered this inconsistent state and rendered a raw gray scaffold frame.
+
+Fix: store the `ClientManager` reference in `initState()` as `late ClientManager _mgr = context.read<ClientManager>()` and use `_mgr` everywhere outside `build()` — `dispose()`, `_room` getter, `_loadTimeline()`, and `_doScheduleVisible()`. The context is no longer accessed after the widget is deactivated.
+
+---
+
 ## 2026-07-11 — v0.1.31 (view-triggered disappearing messages + visual indicator)
 
 **[CHANGE] Disappearing timer starts on VIEW, not on send** — Messages now store `veil_disappear_secs` (duration in seconds) instead of `veil_expire_at` (absolute timestamp set at send time). The timer begins when the **recipient opens the chat** — `ChatScreen.initState` and `_loadTimeline` call `_doScheduleVisible()`, which scans the timeline and calls `DisappearingMessageService.schedule()` for any unscheduled disappearing messages. A `ClientManager.addListener` keeps this running for messages that arrive while the chat is open. The sender's timer starts on the same event (they're already viewing the chat). Backward-compatible: old `veil_expire_at` messages still schedule with the remaining duration.

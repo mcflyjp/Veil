@@ -32,6 +32,7 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  late ClientManager _mgr;
   final _inputCtrl  = TextEditingController();
   final _scrollCtrl = ScrollController();
   final _inputFocus = FocusNode();
@@ -53,17 +54,18 @@ class _ChatScreenState extends State<ChatScreen> {
       : '${_disappearAfterSecs ~/ 60}m';
 
   Room? get _room =>
-      context.read<ClientManager>().roomById(Uri.decodeComponent(widget.roomId));
+      _mgr.roomById(Uri.decodeComponent(widget.roomId));
 
   @override
   void initState() {
     super.initState();
+    _mgr = context.read<ClientManager>();
     NotificationService.instance.activeRoomId = Uri.decodeComponent(widget.roomId);
     _inputCtrl.addListener(_onTypingChanged);
-    context.read<ClientManager>().addListener(_scheduleVisibleDisappearing);
+    _mgr.addListener(_scheduleVisibleDisappearing);
 
     // If the timeline is already cached, use it immediately — no spinner, no freeze.
-    final cached = context.read<ClientManager>().getTimeline(Uri.decodeComponent(widget.roomId));
+    final cached = _mgr.getTimeline(Uri.decodeComponent(widget.roomId));
     if (cached != null) {
       _timeline = cached;
       _loadingTimeline = false;
@@ -79,7 +81,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _typingTimer?.cancel();
     _room?.setTyping(false);
     NotificationService.instance.activeRoomId = null;
-    context.read<ClientManager>().removeListener(_scheduleVisibleDisappearing);
+    _mgr.removeListener(_scheduleVisibleDisappearing);
     // Timeline is owned by ClientManager — do NOT cancel it here.
     // Cancelling would break re-entry into the same chat without a full reload.
     _inputCtrl.dispose();
@@ -89,10 +91,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _loadTimeline() async {
-    final mgr    = context.read<ClientManager>();
     final roomId = Uri.decodeComponent(widget.roomId);
     try {
-      final tl = await mgr.getOrCreateTimeline(roomId);
+      final tl = await _mgr.getOrCreateTimeline(roomId);
       if (!mounted) return;
       setState(() { _timeline = tl; _loadingTimeline = false; });
     } catch (_) {
@@ -114,7 +115,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final room = _room;
     if (timeline == null || room == null) return;
     if (!mounted) return;
-    final client = context.read<ClientManager>().client;
+    final client = _mgr.client;
     for (final event in List.of(timeline.events)) {
       if (event.type != EventTypes.Message) continue;
       final content = event.content;
