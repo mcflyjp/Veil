@@ -1,5 +1,11 @@
 # Veil — Development Log
 
+## 2026-07-18 — v0.1.33 (QR device-link endpoint fix)
+
+**[FIX] QR code button does nothing / shows M_UNRECOGNIZED** — `requestLoginToken()` was calling `POST /_matrix/client/v3/login/token`, which does not exist in the Matrix spec and which Dendrite rightfully returns `M_UNRECOGNIZED` for. The correct Matrix 1.7 endpoint is `POST /_matrix/client/v1/login/get_token`. Changed the URL; the response shape (`login_token` field) is unchanged.
+
+---
+
 ## 2026-07-13 — v0.1.32 (gray screen regression fix)
 
 **[FIX] Gray screen on chat re-entry (regression from v0.1.31)** — v0.1.31 added `ClientManager.addListener` / `removeListener` calls in `_ChatScreenState`. The `removeListener` was called inside `dispose()` via `context.read<ClientManager>()`. In Flutter, `deactivate()` is already called by the time `dispose()` runs, making the `BuildContext` stale — calling `context.read()` there can throw, preventing `super.dispose()` from ever running and leaving the widget in a partially-disposed state. On re-entry to the same chat, the Offstage Navigator encountered this inconsistent state and rendered a raw gray scaffold frame.

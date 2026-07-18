@@ -302,7 +302,7 @@ class ClientManager extends ChangeNotifier {
   Future<String> requestLoginToken() async {
     final accessToken = _client.accessToken;
     if (accessToken == null) throw Exception('Not logged in');
-    final uri = Uri.parse('$kHomeserver/_matrix/client/v3/login/token');
+    final uri = Uri.parse('$kHomeserver/_matrix/client/v1/login/get_token');
     final resp = await http.post(
       uri,
       headers: {
