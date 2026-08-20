@@ -1,5 +1,11 @@
 # Veil — Development Log
 
+## 2026-07-18 — v0.1.34 (iOS IPA CI build)
+
+**[INFRA] iOS unsigned IPA distributed via GitHub Releases** — Added `build-ios` job to CI using `macos-latest` runner. Runs `flutter build ipa --no-codesign --obfuscate --split-debug-info=...` and attaches `Runner.ipa` to the GitHub Release alongside the APK. No Apple Developer account required for the build — users install via Sideloadly, AltStore, or TrollStore (same sideload pattern used by open-source iOS projects like Gen1Recomp). iOS platform target (`app/ios/`) was already scaffolded.
+
+---
+
 ## 2026-07-18 — v0.1.33 (QR device-link endpoint fix)
 
 **[FIX] QR code button does nothing / shows M_UNRECOGNIZED** — `requestLoginToken()` was calling `POST /_matrix/client/v3/login/token`, which does not exist in the Matrix spec and which Dendrite rightfully returns `M_UNRECOGNIZED` for. The correct Matrix 1.7 endpoint is `POST /_matrix/client/v1/login/get_token`. Changed the URL; the response shape (`login_token` field) is unchanged.

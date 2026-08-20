@@ -52,9 +52,15 @@ jobs:
             ## Veil ${{ github.ref_name }}
 
             ### Install on Android
-            1. Download `veil-android.apk` below
+            1. Download `app-release.apk` below
             2. On your Android device, enable **Settings → Install unknown apps** for your browser/Files app
             3. Open the downloaded APK and install
+
+            ### Install on iPhone / iPad (sideload — no Apple account needed)
+            Download `Runner.ipa` below, then install it using one of:
+            - **Sideloadly** (Windows or Mac) — free, signs with your Apple ID, refreshes every 7 days
+            - **AltStore** — same principle, auto-refreshes in background
+            - **TrollStore** — permanent install (iOS ≤ 17.0, device-dependent)
 
             ### What's in this release
             - E2E encrypted messaging (Olm/Megolm — Signal-equivalent)
@@ -65,6 +71,65 @@ jobs:
 
             > Connects to **veilmsg.com** — create an account in-app at first launch.
           files: app/build/app/outputs/flutter-apk/app-release.apk
+          draft: false
+          prerelease: false
+
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.9'
+          channel: stable
+
+      - name: Install dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build IPA (unsigned)
+        working-directory: app
+        run: flutter build ipa --no-codesign --obfuscate --split-debug-info=build/debug-info-ios
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veil-ios
+          path: app/build/ios/ipa/*.ipa
+
+      - name: Attach IPA to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Veil ${{ github.ref_name }}
+          body: |
+            ## Veil ${{ github.ref_name }}
+
+            ### Install on Android
+            1. Download `app-release.apk` below
+            2. On your Android device, enable **Settings → Install unknown apps** for your browser/Files app
+            3. Open the downloaded APK and install
+
+            ### Install on iPhone / iPad (sideload — no Apple account needed)
+            Download `Runner.ipa` below, then install it using one of:
+            - **Sideloadly** (Windows or Mac) — free, signs with your Apple ID, refreshes every 7 days
+            - **AltStore** — same principle, auto-refreshes in background
+            - **TrollStore** — permanent install (iOS ≤ 17.0, device-dependent)
+
+            ### What's in this release
+            - E2E encrypted messaging (Olm/Megolm — Signal-equivalent)
+            - AIM-inspired retro UI
+            - Disappearing messages
+            - Image, video, and file sharing
+            - Group chats
+
+            > Connects to **veilmsg.com** — create an account in-app at first launch.
+          files: |
+            app/build/ios/ipa/*.ipa
           draft: false
           prerelease: false
 
