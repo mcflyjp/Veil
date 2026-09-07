@@ -1,9 +1,14 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:matrix/matrix.dart';
 import 'package:provider/provider.dart';
 import '../core/client_manager.dart';
 import '../core/veil_theme.dart';
 import '../core/veil_user_prefs.dart';
+import '../widgets/buddy_avatar.dart';
+import 'avatar_crop_screen.dart';
 
 // Account settings screen: profile card (avatar, display name edit, locked
 // screen-name chip), theme picker, privacy/security info + link to Linked
@@ -20,17 +25,87 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   String? _displayName;
   bool _loadingName = true;
+  Uri? _avatarUrl;
 
   @override
   void initState() {
     super.initState();
-    _loadDisplayName();
+    _loadProfile();
   }
 
-  Future<void> _loadDisplayName() async {
+  Future<void> _loadProfile() async {
     final mgr = context.read<ClientManager>();
-    final name = await mgr.fetchDisplayName();
-    if (mounted) setState(() { _displayName = name; _loadingName = false; });
+    final results = await Future.wait([mgr.fetchDisplayName(), mgr.fetchAvatarUrl()]);
+    if (mounted) {
+      setState(() {
+        _displayName = results[0] as String?;
+        _avatarUrl   = results[1] as Uri?;
+        _loadingName = false;
+      });
+    }
+  }
+
+  // ── Profile picture: pick → position → upload ──────────────────────────
+
+  Future<void> _editAvatar(ClientManager mgr, VeilThemeColors tc) async {
+    final hasAvatar = _avatarUrl != null;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: tc.inputBg,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 8),
+          ListTile(
+            leading: Icon(Icons.photo_outlined, color: tc.toolbarText),
+            title: Text('Choose Photo', style: TextStyle(color: tc.nameText, fontSize: 16)),
+            onTap: () => Navigator.pop(sheetCtx, 'choose'),
+          ),
+          if (hasAvatar)
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('Remove Photo', style: TextStyle(color: Colors.red, fontSize: 16)),
+              onTap: () => Navigator.pop(sheetCtx, 'remove'),
+            ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+
+    if (action == 'remove') {
+      try {
+        await mgr.removeAvatar();
+        if (mounted) setState(() => _avatarUrl = null);
+      } catch (e) {
+        _showError('Failed to remove photo: $e');
+      }
+      return;
+    }
+    if (action != 'choose') return;
+
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, requestFullMetadata: false);
+    if (picked == null || !mounted) return;
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+
+    final cropped = await Navigator.push<Uint8List>(context,
+        MaterialPageRoute(builder: (_) => AvatarCropScreen(imageBytes: bytes)));
+    if (cropped == null || !mounted) return;
+
+    try {
+      await mgr.setAvatar(cropped);
+      final fresh = await mgr.fetchAvatarUrl();
+      if (mounted) setState(() => _avatarUrl = fresh);
+    } catch (e) {
+      _showError('Failed to update photo: $e');
+    }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 3)));
   }
 
   Future<void> _editDisplayName(ClientManager mgr, VeilThemeColors tc) async {
@@ -126,7 +201,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 screenName: screenName,
                 displayName: displayedName,
                 tc: tc,
+                avatarUrl: _avatarUrl,
+                client: mgr.client,
                 onEditName: () => _editDisplayName(mgr, tc),
+                onEditAvatar: () => _editAvatar(mgr, tc),
               ),
 
               const SizedBox(height: 12),
@@ -237,11 +315,16 @@ class _ProfileCard extends StatelessWidget {
   final String screenName;
   final String displayName;
   final VeilThemeColors tc;
+  final Uri? avatarUrl;
+  final Client client;
   final VoidCallback onEditName;
+  final VoidCallback onEditAvatar;
 
   const _ProfileCard({
     required this.initial, required this.screenName,
-    required this.displayName, required this.tc, required this.onEditName,
+    required this.displayName, required this.tc,
+    required this.avatarUrl, required this.client,
+    required this.onEditName, required this.onEditAvatar,
   });
 
   @override
@@ -251,18 +334,24 @@ class _ProfileCard extends StatelessWidget {
       color: cardBg,
       padding: const EdgeInsets.all(20),
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        // Avatar
-        Container(
-          width: 68, height: 68,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-                colors: VeilThemeColors.avatarGradientFor(initial),
-                begin: Alignment.topLeft, end: Alignment.bottomRight),
-          ),
-          child: Center(child: Text(initial,
-              style: const TextStyle(color: Colors.white, fontSize: 30,
-                  fontWeight: FontWeight.bold))),
+        // Avatar — tap to change photo
+        GestureDetector(
+          onTap: onEditAvatar,
+          child: Stack(children: [
+            BuddyAvatar(initial: initial, tc: tc, isGroup: true, size: 68,
+                avatarUrl: avatarUrl, client: client),
+            Positioned(right: 0, bottom: 0,
+              child: Container(
+                width: 24, height: 24,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: tc.toolbarActive,
+                  border: Border.all(color: cardBg, width: 2),
+                ),
+                child: const Icon(Icons.camera_alt, size: 12, color: Colors.white),
+              ),
+            ),
+          ]),
         ),
         const SizedBox(width: 16),
 

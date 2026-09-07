@@ -439,7 +439,8 @@ class _BuddyRow extends StatelessWidget {
               border: Border(bottom: BorderSide(color: tc.divider, width: 0.5)),
             ),
       child: Row(children: [
-        BuddyAvatar(initial: initial, tc: tc, isGroup: !room.isDirectChat),
+        BuddyAvatar(initial: initial, tc: tc, isGroup: !room.isDirectChat,
+            avatarUrl: room.avatar, client: room.client),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [

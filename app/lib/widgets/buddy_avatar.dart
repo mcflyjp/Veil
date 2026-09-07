@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:matrix/matrix.dart';
 import '../core/aim_theme.dart';
+import '../core/client_manager.dart';
 import '../core/veil_theme.dart';
 
 // Shared circular avatar used by the buddy list and hidden-chats screen.
@@ -8,11 +10,17 @@ import '../core/veil_theme.dart';
 // fill already uses, so ring and fill always read as one coherent color —
 // plus a stronger presence-dot glow. Every other theme renders the same
 // plain flat circle it always has; this widget changed nothing for them.
+//
+// Pass [avatarUrl] + [client] to show a real uploaded profile picture
+// instead of the initial-letter fill (falls back to the letter on load
+// error or when no avatar is set — see ClientManager.setAvatar).
 class BuddyAvatar extends StatelessWidget {
   final String initial;
   final VeilThemeColors tc;
   final bool isGroup; // groups don't get a presence dot — only DMs do
   final double size;
+  final Uri? avatarUrl;
+  final Client? client;
 
   const BuddyAvatar({
     super.key,
@@ -20,6 +28,8 @@ class BuddyAvatar extends StatelessWidget {
     required this.tc,
     this.isGroup = false,
     this.size = 46,
+    this.avatarUrl,
+    this.client,
   });
 
   @override
@@ -27,7 +37,7 @@ class BuddyAvatar extends StatelessWidget {
     final ringColors = VeilThemeColors.avatarGradientFor(initial);
     final circleSize = tc.avatarRing ? size - 4 : size;
 
-    Widget circle = Container(
+    final letterFill = Container(
       width: circleSize, height: circleSize,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
@@ -42,6 +52,21 @@ class BuddyAvatar extends StatelessWidget {
           style: TextStyle(color: tc.avatarText, fontSize: circleSize * 0.41,
               fontWeight: FontWeight.bold))),
     );
+
+    final url = avatarUrl;
+    final c = client;
+    Widget circle = (url == null || c == null)
+        ? letterFill
+        : ClipOval(
+            child: Image.network(
+              mxcToHttpUrl(c, url),
+              headers: {'Authorization': 'Bearer ${c.accessToken}'},
+              width: circleSize, height: circleSize,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => letterFill,
+              loadingBuilder: (_, child, progress) => progress == null ? child : letterFill,
+            ),
+          );
 
     if (tc.avatarRing) {
       circle = Container(

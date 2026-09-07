@@ -10,6 +10,12 @@ import 'notification_service.dart';
 
 const kHomeserver = 'https://matrix.veilmsg.com';
 
+/// Converts an `mxc://` URI into a downloadable HTTP URL against this
+/// client's homeserver. Callers still need to pass `Authorization: Bearer
+/// <client.accessToken>` themselves — media downloads are auth-gated.
+String mxcToHttpUrl(Client client, Uri mxc) =>
+    '${client.homeserver}/_matrix/media/v3/download/${mxc.host}${mxc.path}';
+
 // Central Matrix client wrapper and the single most-depended-on class in the
 // app. Owns the matrix_dart_sdk Client instance, wires up sync/event listeners
 // (new-message and invite notifications), and exposes everything screens need:
@@ -258,6 +264,29 @@ class ClientManager extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<Uri?> fetchAvatarUrl() async {
+    try {
+      final userId = _client.userID;
+      if (userId == null) return null;
+      final profile = await _client.getUserProfile(userId);
+      return profile.avatarUrl;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Uploads [bytes] (already cropped/composited to the desired square PNG
+  /// by AvatarCropScreen) as the account's profile picture.
+  Future<void> setAvatar(Uint8List bytes) async {
+    await _client.setAvatar(MatrixFile(bytes: bytes, name: 'avatar.png', mimeType: 'image/png'));
+    notifyListeners();
+  }
+
+  Future<void> removeAvatar() async {
+    await _client.setAvatar(null);
+    notifyListeners();
   }
 
   Future<void> setDisplayName(String name) async {

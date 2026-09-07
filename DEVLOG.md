@@ -1,5 +1,17 @@
 # Veil — Development Log
 
+## 2026-07-19 — v0.1.38 (profile pictures + interactive crop)
+
+**[ADD] Profile picture upload** — Settings → tap the profile avatar → Choose Photo (or Remove Photo, if one is set). Uses `Client.setAvatar` under the hood (uploads to the Matrix media repo, sets `avatar_url` on the account). Previously there was no way to set one at all — every avatar in the app was just a gradient circle with an initial letter.
+
+**[ADD] Interactive avatar positioner** (`screens/avatar_crop_screen.dart`) — after picking a photo, the user gets a full-screen circular window over their image that they drag to reposition and pinch (or use a slider) to zoom, so they choose exactly what lands inside the circle rather than the app auto-centering or auto-cropping. Captures precisely what's visible in the circle via `RenderRepaintBoundary` and uploads that.
+
+**[ADD] Real photos throughout the app** — `BuddyAvatar` now shows an uploaded profile picture when one exists (falling back to the initial-letter gradient on load failure or when unset), used consistently in the buddy list, hidden chats, and the settings profile card. DM rows resolve the other person's photo automatically via `Room.avatar`.
+
+**[ADD] `mxcToHttpUrl` helper** (`core/client_manager.dart`) — centralizes the `mxc://` → authenticated-HTTP-download-URL conversion that was previously duplicated inline in chat_screen.dart's image rendering.
+
+---
+
 ## 2026-07-19 — v0.1.37 (Modern Dark + AIM Remastered Dark)
 
 **[ADD] Modern Dark and AIM Remastered Dark** — v0.1.36 shipped only the light variants of both new themes as real, selectable themes; the dark mockups existed but were never wired in. Both are now real theme options with color tokens ported directly from the dark mockups. 8 themes total now (was 6); the Settings theme grid still auto-wraps at 3 per row.

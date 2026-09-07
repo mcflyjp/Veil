@@ -98,7 +98,8 @@ class _HiddenChatsScreenState extends State<HiddenChatsScreen> {
                       final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
                       return ListTile(
                         tileColor: tc.rowBg == Colors.transparent ? null : tc.rowBg,
-                        leading: BuddyAvatar(initial: initial, tc: tc, isGroup: true, size: 44),
+                        leading: BuddyAvatar(initial: initial, tc: tc, isGroup: true, size: 44,
+                            avatarUrl: r.avatar, client: r.client),
                         title: Text(name, style: TextStyle(fontSize: 16,
                             color: tc.nameText, fontWeight: FontWeight.w500)),
                         subtitle: Text('Hidden',
