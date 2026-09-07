@@ -1,5 +1,15 @@
 # Veil — Development Log
 
+## 2026-07-19 — v0.1.39 (avatars in chat title bar + group messages)
+
+**[ADD] Avatar in the chat title bar** — every chat screen now shows the room's avatar (the other person's photo for a DM, the group photo if set) next to the lock icon and title, using the same `BuddyAvatar` widget as everywhere else.
+
+**[ADD] Per-sender avatars on group chat messages** — bubble-layout themes (Glass, Modern, Modern Dark) now show the sender's own photo next to their received messages in **group chats only**. Scoped to groups because in a DM you already know who the other person is — showing their avatar on every single line would just be visual noise. Your own sent messages never show one (standard convention, they're already right-aligned).
+
+**Scoping note:** this is bubble-layout themes only for now. AIM Classic / AIM Remastered (light+dark) / Dark / Light use the flat `[HH:MM] Name: text` line format, which doesn't have a natural place for a per-line avatar without restructuring every line into a row — left that format's density alone since it's deliberately compact. Say the word if you want it there too.
+
+---
+
 ## 2026-07-19 — v0.1.38 (profile pictures + interactive crop)
 
 **[ADD] Profile picture upload** — Settings → tap the profile avatar → Choose Photo (or Remove Photo, if one is set). Uses `Client.setAvatar` under the hood (uploads to the Matrix media repo, sets `avatar_url` on the account). Previously there was no way to set one at all — every avatar in the app was just a gradient circle with an initial letter.

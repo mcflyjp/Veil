@@ -19,6 +19,7 @@ import '../core/html_span.dart';
 import '../core/veil_theme.dart';
 import '../core/veil_user_prefs.dart';
 import '../widgets/disappearing_timer_dialog.dart';
+import '../widgets/buddy_avatar.dart';
 
 // The chat window — by far the largest screen in the app. Renders the message
 // timeline (AIM flat-text layout, or a theme-driven bubble layout for Glass/Modern),
@@ -601,7 +602,8 @@ class _ChatScreenState extends State<ChatScreen> {
         onPopInvokedWithResult: (didPop, _) { if (!didPop) context.go('/buddylist'); },
         child: Scaffold(
           body: Column(children: [
-            _ChatTitleBar(title: 'Chat', tc: tc, onBack: () => context.go('/buddylist')),
+            _ChatTitleBar(title: 'Chat', tc: tc, avatarUrl: null, client: mgr.client,
+                onBack: () => context.go('/buddylist')),
             Expanded(child: Container(color: tc.chatBg,
               child: const Center(child: Text('Room not found')))),
           ]),
@@ -632,6 +634,8 @@ class _ChatScreenState extends State<ChatScreen> {
           _ChatTitleBar(
             title: room.getLocalizedDisplayname(),
             tc: tc,
+            avatarUrl: room.avatar,
+            client: room.client,
             onBack: () => context.go('/buddylist'),
             onTimer: _setDisappearing,
             onAddMember: room.isDirectChat ? null : _addMember,
@@ -1205,6 +1209,9 @@ class _AimMessageLine extends StatelessWidget {
   String get _senderName =>
       event.senderId.split(':').first.replaceFirst('@', '');
 
+  String get _senderInitial =>
+      _senderName.isNotEmpty ? _senderName[0].toUpperCase() : '?';
+
   bool get _isDisappearing =>
       event.content['veil_disappear_secs'] != null ||
       event.content['veil_expire_at'] != null;
@@ -1266,30 +1273,45 @@ class _AimMessageLine extends StatelessWidget {
     );
 
     final showSenderLabel = !isMe || tc.bubbleShowSenderBothSides;
+    // Per-sender avatar next to received messages in group chats — DMs skip
+    // it (you already know who the other person is; showing it on every
+    // line would just be noise) and your own sent messages never show one.
+    final showAvatar = !isMe && !event.room.isDirectChat;
+
+    final column = Column(
+      crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        if (showSenderLabel)
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 2),
+            child: Text(_senderName,
+              style: TextStyle(fontSize: 11, color: tc.bubbleSenderLabelColor, fontWeight: FontWeight.w600)),
+          ),
+        bubble,
+        if (_isDisappearing && event.messageType != MessageTypes.Image)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
+            child: _DisappearingCountdown(eventId: event.eventId),
+          ),
+        Padding(
+          padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
+          child: Text(timeStr, style: TextStyle(fontSize: 10, color: tc.bubbleTimestampColor)),
+        ),
+      ],
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-      child: Column(
-        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          if (showSenderLabel)
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 2),
-              child: Text(_senderName,
-                style: TextStyle(fontSize: 11, color: tc.bubbleSenderLabelColor, fontWeight: FontWeight.w600)),
-            ),
-          bubble,
-          if (_isDisappearing && event.messageType != MessageTypes.Image)
-            Padding(
-              padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
-              child: _DisappearingCountdown(eventId: event.eventId),
-            ),
-          Padding(
-            padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
-            child: Text(timeStr, style: TextStyle(fontSize: 10, color: tc.bubbleTimestampColor)),
-          ),
-        ],
-      ),
+      child: showAvatar
+          ? Row(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: BuddyAvatar(initial: _senderInitial, tc: tc, isGroup: true, size: 28,
+                    avatarUrl: event.senderFromMemoryOrFallback.avatarUrl, client: event.room.client),
+              ),
+              Flexible(child: column),
+            ])
+          : column,
     );
   }
 
@@ -1659,16 +1681,20 @@ class _InlineVideoDialogState extends State<_InlineVideoDialog> {
 class _ChatTitleBar extends StatelessWidget {
   final String title;
   final VeilThemeColors tc;
+  final Uri? avatarUrl;
+  final Client client;
   final VoidCallback onBack;
   final VoidCallback? onTimer;
   final VoidCallback? onAddMember;
-  const _ChatTitleBar({required this.title, required this.tc, required this.onBack,
+  const _ChatTitleBar({required this.title, required this.tc,
+      required this.avatarUrl, required this.client, required this.onBack,
       this.onTimer, this.onAddMember});
 
   @override
   Widget build(BuildContext context) {
     final isWide  = MediaQuery.of(context).size.width >= 700;
     final topPad  = MediaQuery.of(context).padding.top;
+    final initial = title.isNotEmpty ? title[0].toUpperCase() : '?';
     return Container(
       decoration: BoxDecoration(gradient: LinearGradient(colors: [tc.titleStart, tc.titleEnd])),
       padding: EdgeInsets.fromLTRB(8, topPad + 14, 8, 14),
@@ -1677,8 +1703,11 @@ class _ChatTitleBar extends StatelessWidget {
           InkWell(onTap: onBack,
             child: Padding(padding: const EdgeInsets.all(8),
               child: Icon(Icons.arrow_back, color: tc.titleOnColor, size: 24))),
-        Icon(Icons.lock, color: tc.titleOnColor.withAlpha(200), size: 18),
+        BuddyAvatar(initial: initial, tc: tc, isGroup: true, size: 32,
+            avatarUrl: avatarUrl, client: client),
         const SizedBox(width: 8),
+        Icon(Icons.lock, color: tc.titleOnColor.withAlpha(200), size: 16),
+        const SizedBox(width: 6),
         Expanded(child: Text('Veil — $title',
           style: TextStyle(color: tc.titleOnColor, fontSize: 18, fontWeight: FontWeight.bold),
           overflow: TextOverflow.ellipsis)),
