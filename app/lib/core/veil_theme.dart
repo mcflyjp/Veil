@@ -1,38 +1,46 @@
 import 'package:flutter/material.dart';
 
-// Color palette definitions for the six app-wide UI themes (modern/retro/aim/dark/glass/light).
-// VeilThemeColors is a plain data class of named colors consumed by nearly every
-// screen and widget in the app; VeilUserPrefs (core/veil_user_prefs.dart) owns
-// the current VeilThemeMode selection and exposes `.colors` for the active theme.
+// Color palette definitions for the eight app-wide UI themes. VeilThemeColors
+// is a plain data class of named colors consumed by nearly every screen and
+// widget in the app; VeilUserPrefs (core/veil_user_prefs.dart) owns the
+// current VeilThemeMode selection and exposes `.colors` for the active theme.
 // This file has no app state of its own — just color constants and lookups.
 //
-// `modern` (Direction B) is the default theme as of v0.1.36: a contemporary
-// bubble-based layout that keeps Veil's AIM soul through the signature blue
-// and screen-name-forward headers rather than the literal Win98 chrome.
-// `retro` (Direction A, "AIM Remastered") keeps the exact flat AIM-line
-// structure of `aim` but with richer gradients, gradient-ring avatars, and
-// refined tones — a 2026 remaster rather than a redesign. `aim`/`dark`/
-// `glass`/`light` are unchanged from before this pass.
+// `modern` (Direction B, light) is the default theme as of v0.1.36: a
+// contemporary bubble-based layout that keeps Veil's AIM soul through the
+// signature blue and screen-name-forward headers rather than the literal
+// Win98 chrome. `modernDark` is the same layout in a dark palette.
+// `retro` (Direction A, "AIM Remastered", light) keeps the exact flat
+// AIM-line structure of `aim` but with richer gradients, gradient-ring
+// avatars, and refined tones — a 2026 remaster rather than a redesign.
+// `retroDark` is the same structure in a dark palette. `aim`/`dark`/`glass`/
+// `light` are the four original themes, unchanged by any of this — `glass`
+// in particular predates Modern/AIM Remastered entirely and is not a dark
+// variant of either; it just happens to also be dark and bubble-based.
 
-enum VeilThemeMode { modern, retro, aim, dark, glass, light }
+enum VeilThemeMode { modern, modernDark, retro, retroDark, aim, dark, glass, light }
 
 extension VeilThemeModeLabel on VeilThemeMode {
   String get label => switch (this) {
-    VeilThemeMode.modern => 'Modern',
-    VeilThemeMode.retro  => 'AIM Remastered',
-    VeilThemeMode.aim    => 'AIM Classic',
-    VeilThemeMode.dark   => 'Dark',
-    VeilThemeMode.glass  => 'Glass',
-    VeilThemeMode.light  => 'Light',
+    VeilThemeMode.modern     => 'Modern',
+    VeilThemeMode.modernDark => 'Modern Dark',
+    VeilThemeMode.retro      => 'AIM Remastered',
+    VeilThemeMode.retroDark  => 'AIM Remastered Dark',
+    VeilThemeMode.aim        => 'AIM Classic',
+    VeilThemeMode.dark       => 'Dark',
+    VeilThemeMode.glass      => 'Glass',
+    VeilThemeMode.light      => 'Light',
   };
 
   IconData get icon => switch (this) {
-    VeilThemeMode.modern => Icons.auto_awesome,
-    VeilThemeMode.retro  => Icons.computer,
-    VeilThemeMode.aim    => Icons.window,
-    VeilThemeMode.dark   => Icons.dark_mode,
-    VeilThemeMode.glass  => Icons.blur_on,
-    VeilThemeMode.light  => Icons.light_mode,
+    VeilThemeMode.modern     => Icons.auto_awesome,
+    VeilThemeMode.modernDark => Icons.nightlight_round,
+    VeilThemeMode.retro      => Icons.computer,
+    VeilThemeMode.retroDark  => Icons.desktop_windows,
+    VeilThemeMode.aim        => Icons.window,
+    VeilThemeMode.dark       => Icons.dark_mode,
+    VeilThemeMode.glass      => Icons.blur_on,
+    VeilThemeMode.light      => Icons.light_mode,
   };
 }
 
@@ -208,6 +216,51 @@ class VeilThemeColors {
     bubbleTimestampColor:    Color(0xFF9AA0AC),
   );
 
+  static const VeilThemeColors modernDark = VeilThemeColors(
+    scaffold:        Color(0xFF0B0D16),
+    titleStart:      Color(0xFF14162A),
+    titleEnd:        Color(0xFF14162A),
+    titleOnColor:    Color(0xFFF1F2F6),
+    nameBg:          Color(0xFF171A24),
+    sectionBg:       Color(0xFF171A24),
+    sectionText:     Color(0xFF8890A0),
+    listBg:          Color(0xFF0B0D16),
+    rowBg:           Color(0xFF171A24),
+    roundedRows:     true,
+    rowRadius:       18,
+    chatBg:          Color(0xFF0B0D16),
+    inputBg:         Color(0xFF12141C),
+    myNameColor:     Color(0xFF6E93F0),
+    theirNameColor:  Color(0xFFE58A72),
+    gradientAvatar:  true,
+    solidAvatarBg:   Color(0xFF6E93F0),
+    avatarText:      Colors.white,
+    avatarRing:      true,
+    nameText:        Color(0xFFE7E9F0),
+    previewText:     Color(0xFF8890A0),
+    timestampText:   Color(0xFF767C8C),
+    badgeBg:         Color(0xFF6E93F0),
+    badgeText:       Colors.white,
+    toolbarBg:       Color(0xFF171A24),
+    toolbarText:     Color(0xFF8890A0),
+    toolbarActive:   Color(0xFF6E93F0),
+    floatingToolbar: true,
+    presenceBorder:  Color(0xFF171A24),
+    divider:         Color(0x0FFFFFFF),
+    useGlass:        true,
+    showGlow:        false,
+    titleBarBorderColor: Color(0x14FFFFFF),
+    bubbleLayout:    true,
+    pillComposer:    true,
+    bubbleShowSenderBothSides: true,
+    sentBubbleGradient:     [Color(0xFF6E93F0), Color(0xFF1D3FAE)],
+    receivedBubbleGradient: [Color(0xFF1E212C), Color(0xFF1E212C)],
+    receivedBubbleTextColor: Color(0xFFE7E9F0),
+    receivedBubbleBorder:    null,
+    bubbleSenderLabelColor:  Color(0xFF767C8C),
+    bubbleTimestampColor:    Color(0xFF767C8C),
+  );
+
   static const VeilThemeColors retro = VeilThemeColors(
     scaffold:        Color(0xFFF5F6FA),
     titleStart:      Color(0xFF142D82),
@@ -238,6 +291,38 @@ class VeilThemeColors {
     toolbarActive:   Color(0xFF3B5FE0),
     presenceBorder:  Colors.white,
     divider:         Color(0xFFEAEDF3),
+  );
+
+  static const VeilThemeColors retroDark = VeilThemeColors(
+    scaffold:        Color(0xFF0B0D14),
+    titleStart:      Color(0xFF142D82),
+    titleEnd:        Color(0xFF5B8FD4),
+    titleOnColor:    Colors.white,
+    nameBg:          Color(0xFF142D82),
+    sectionBg:       Color(0xFF1D3FAE),
+    sectionText:     Colors.white,
+    listBg:          Color(0xFF0B0D14),
+    rowBg:           Color(0xFF171923),
+    roundedRows:     true,
+    rowRadius:       12,
+    chatBg:          Color(0xFF0F1117),
+    inputBg:         Color(0xFF171923),
+    myNameColor:     Color(0xFF6E93F0),
+    theirNameColor:  Color(0xFFE58A72),
+    gradientAvatar:  true,
+    solidAvatarBg:   Color(0xFF6E93F0),
+    avatarText:      Colors.white,
+    avatarRing:      true,
+    nameText:        Color(0xFFE7E9F0),
+    previewText:     Color(0xFF8890A0),
+    timestampText:   Color(0xFF767C8C),
+    badgeBg:         Color(0xFF6E93F0),
+    badgeText:       Colors.white,
+    toolbarBg:       Color(0xFF12141C),
+    toolbarText:     Color(0xFF9096A6),
+    toolbarActive:   Color(0xFF6E93F0),
+    presenceBorder:  Color(0xFF171923),
+    divider:         Color(0x0FFFFFFF),
   );
 
   static const VeilThemeColors aim = VeilThemeColors(
@@ -376,11 +461,13 @@ class VeilThemeColors {
   );
 
   static VeilThemeColors forMode(VeilThemeMode mode) => switch (mode) {
-    VeilThemeMode.modern => VeilThemeColors.modern,
-    VeilThemeMode.retro  => VeilThemeColors.retro,
-    VeilThemeMode.aim    => VeilThemeColors.aim,
-    VeilThemeMode.dark   => VeilThemeColors.dark,
-    VeilThemeMode.glass  => VeilThemeColors.glass,
-    VeilThemeMode.light  => VeilThemeColors.light,
+    VeilThemeMode.modern     => VeilThemeColors.modern,
+    VeilThemeMode.modernDark => VeilThemeColors.modernDark,
+    VeilThemeMode.retro      => VeilThemeColors.retro,
+    VeilThemeMode.retroDark  => VeilThemeColors.retroDark,
+    VeilThemeMode.aim        => VeilThemeColors.aim,
+    VeilThemeMode.dark       => VeilThemeColors.dark,
+    VeilThemeMode.glass      => VeilThemeColors.glass,
+    VeilThemeMode.light      => VeilThemeColors.light,
   };
 }

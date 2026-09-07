@@ -1,5 +1,15 @@
 # Veil — Development Log
 
+## 2026-07-19 — v0.1.37 (Modern Dark + AIM Remastered Dark)
+
+**[ADD] Modern Dark and AIM Remastered Dark** — v0.1.36 shipped only the light variants of both new themes as real, selectable themes; the dark mockups existed but were never wired in. Both are now real theme options with color tokens ported directly from the dark mockups. 8 themes total now (was 6); the Settings theme grid still auto-wraps at 3 per row.
+
+**[CLARIFICATION]** Glass is not, and never was, a dark variant of Modern — it's one of the four original themes and was intentionally left untouched in v0.1.36. The confusion was understandable since both are dark and bubble-based; they're unrelated theme families that happen to share a rendering style.
+
+**[FIX] Floating toolbar (Modern/Modern Dark) illegible** — the "IM" button was only tinted a different color from Settings/Sign Off, with no fill — all three read as the same washed-out gray with nothing to anchor on. Now IM gets an actual filled gradient pill (matching the mockup) with white icon/text; Settings and Sign Off stay plain. This was almost certainly the "gray outline, hard to read" issue.
+
+---
+
 ## 2026-07-19 — v0.1.36 (Modern default theme + AIM Remastered)
 
 **[ADD] Modern theme — new default** — A contemporary bubble-based layout (iMessage/Telegram-grade polish) built from the "Direction B" mockup. Keeps Veil's AIM soul through the signature blue and screen-name labels shown above both sent and received bubbles (not hidden behind avatars-only), plus the existing font/color customization surfaced as a first-class pill row in the composer (Aa chip, B/I/U pills, disappearing-timer pill) instead of a small icon. Floating rounded pill bottom toolbar. Gradient-ring avatars with a presence glow. This is now the default theme for anyone who has never set a preference — existing users keep whatever they already had (no forced migration).

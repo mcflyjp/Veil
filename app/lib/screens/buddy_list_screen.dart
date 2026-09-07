@@ -592,9 +592,11 @@ class _ToolbarBtn extends StatelessWidget {
   );
 }
 
-// Floating-pill toolbar button (Modern only). `primary` gives IM a subtle
-// accent tint — it's the most-used action, not a claim about the current
-// route, since this bar has no real "active tab" concept.
+// Floating-pill toolbar button (Modern only). `primary` fills IM with a solid
+// gradient pill so it visually anchors the bar — it's the most-used action,
+// not a claim about the current route, since this bar has no real "active
+// tab" concept. Without a fill, all three buttons read as the same washed-out
+// gray with nothing to focus on — this is what made the bar hard to read.
 class _FloatingToolbarBtn extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -606,17 +608,27 @@ class _FloatingToolbarBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = primary ? tc.toolbarActive : tc.toolbarText;
+    final content = Column(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 20, color: primary ? Colors.white : tc.toolbarText),
+      const SizedBox(height: 3),
+      Text(label, style: TextStyle(fontSize: 11.5,
+          fontWeight: primary ? FontWeight.w700 : FontWeight.normal,
+          color: primary ? Colors.white : tc.toolbarText)),
+    ]);
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 22, color: color),
-          const SizedBox(height: 3),
-          Text(label, style: TextStyle(fontSize: 12.5, fontWeight: primary ? FontWeight.w700 : FontWeight.normal, color: color)),
-        ]),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        decoration: primary
+            ? BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(colors: tc.sentBubbleGradient,
+                    begin: Alignment.topLeft, end: Alignment.bottomRight),
+              )
+            : null,
+        child: content,
       ),
     );
   }
