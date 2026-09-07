@@ -21,7 +21,7 @@ import '../core/veil_user_prefs.dart';
 import '../widgets/disappearing_timer_dialog.dart';
 
 // The chat window — by far the largest screen in the app. Renders the message
-// timeline (AIM flat-text layout or Glass bubble layout depending on theme),
+// timeline (AIM flat-text layout, or a theme-driven bubble layout for Glass/Modern),
 // the formatting/media toolbar, the text input, and owns per-message
 // disappearing-timer scheduling for whatever is currently on screen. Roughly:
 //   _ChatScreenState        — lifecycle, sending, disappearing-timer wiring, build()
@@ -716,6 +716,10 @@ class _ChatScreenState extends State<ChatScreen> {
               ]),
             ),
 
+          // ── Composer (Modern: scrollable pill row + pill input) ────────
+          if (tc.pillComposer) _buildPillComposer(prefs)
+          else ...[
+
           // ── Formatting toolbar ────────────────────────────────────────
           Container(
             height: 52,
@@ -825,10 +829,168 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ]),
           ),
+          ], // end pillComposer else-branch
         ]),
       ),
     );
   }
+
+  // ── Pill composer (Modern) ────────────────────────────────────────────
+  // Scrollable Aa/B/I/U/timer pill row, then a plus button + rounded input
+  // pill + circular send button. Replaces the icon toolbar + boxy input
+  // above for themes with tc.pillComposer set.
+  Widget _buildPillComposer(VeilUserPrefs prefs) {
+    final tc = prefs.colors;
+    return Container(
+      color: tc.inputBg,
+      padding: EdgeInsets.fromLTRB(12, 8, 12, 10 + MediaQuery.viewPaddingOf(context).bottom),
+      decoration: BoxDecoration(border: Border(top: BorderSide(color: tc.divider))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+          height: 34,
+          child: ListView(scrollDirection: Axis.horizontal, children: [
+            InkWell(
+              onTap: () => _openFontPicker(prefs),
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(color: tc.scaffold, borderRadius: BorderRadius.circular(14)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text('Aa', style: TextStyle(fontFamily: prefs.fontFamily, fontWeight: FontWeight.bold,
+                      fontSize: 14, color: tc.nameText)),
+                  const SizedBox(width: 6),
+                  Text('${prefs.fontFamily} · ${prefs.fontSize.toInt()}',
+                      style: TextStyle(fontSize: 11.5, color: tc.previewText)),
+                ]),
+              ),
+            ),
+            const SizedBox(width: 6),
+            _ComposerPill(active: prefs.bold, tc: tc, onTap: () => prefs.setFont(bold: !prefs.bold),
+                child: Text('B', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13,
+                    color: prefs.bold ? tc.badgeText : tc.nameText))),
+            const SizedBox(width: 6),
+            _ComposerPill(active: prefs.italic, tc: tc, onTap: () => prefs.setFont(italic: !prefs.italic),
+                child: Text('I', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 13,
+                    color: prefs.italic ? tc.badgeText : tc.nameText))),
+            const SizedBox(width: 6),
+            _ComposerPill(active: prefs.underline, tc: tc, onTap: () => prefs.setFont(underline: !prefs.underline),
+                child: Text('U', style: TextStyle(decoration: TextDecoration.underline, fontSize: 13,
+                    color: prefs.underline ? tc.badgeText : tc.nameText))),
+            const SizedBox(width: 6),
+            Container(width: 1, height: 20, color: tc.divider, margin: const EdgeInsets.symmetric(horizontal: 2)),
+            const SizedBox(width: 6),
+            _ComposerPill(
+              active: _disappearAfterSecs > 0, tc: tc, activeColor: Colors.orange.withAlpha(40),
+              onTap: _pickDisappearTimer,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(_disappearAfterSecs > 0 ? Icons.timer : Icons.timer_outlined, size: 14,
+                    color: _disappearAfterSecs > 0 ? Colors.orange : tc.toolbarText),
+                if (_disappearAfterSecs > 0) ...[
+                  const SizedBox(width: 4),
+                  Text(_disappearLabel, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.orange)),
+                ],
+              ]),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 9),
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          InkWell(
+            onTap: _sending ? null : _pickMedia,
+            borderRadius: BorderRadius.circular(19),
+            child: Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: tc.scaffold),
+              child: Icon(Icons.add, size: 20, color: tc.toolbarText),
+            ),
+          ),
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: _sending ? null : _sendFile,
+            borderRadius: BorderRadius.circular(19),
+            child: Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: tc.scaffold),
+              child: Icon(Icons.attach_file, size: 18, color: tc.toolbarText),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 140),
+              decoration: BoxDecoration(color: tc.scaffold, borderRadius: BorderRadius.circular(22)),
+              child: TextField(
+                controller: _inputCtrl,
+                focusNode: _inputFocus,
+                maxLines: null,
+                textInputAction: TextInputAction.newline,
+                style: TextStyle(
+                  fontFamily:  prefs.fontFamily,
+                  fontSize:    prefs.fontSize,
+                  fontWeight:  prefs.bold      ? FontWeight.bold   : FontWeight.normal,
+                  fontStyle:   prefs.italic    ? FontStyle.italic  : FontStyle.normal,
+                  decoration:  prefs.underline ? TextDecoration.underline : TextDecoration.none,
+                  color: tc.nameText,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Type a message...',
+                  hintStyle: TextStyle(fontSize: prefs.fontSize, color: tc.previewText),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: _sending ? null : () => _sendText(prefs),
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(colors: tc.sentBubbleGradient),
+                boxShadow: [BoxShadow(color: tc.badgeBg.withAlpha(90), blurRadius: 10, offset: const Offset(0, 3))],
+              ),
+              child: _sending
+                  ? SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: tc.badgeText))
+                  : Icon(Icons.send, size: 17, color: tc.badgeText),
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+}
+
+// Small rounded pill used by the Modern composer (Aa chip aside — that one
+// has its own layout above). Solid fill in [activeColor] (default toolbarActive)
+// when active, a neutral scaffold-colored pill otherwise.
+class _ComposerPill extends StatelessWidget {
+  final Widget child;
+  final bool active;
+  final VeilThemeColors tc;
+  final Color? activeColor;
+  final VoidCallback onTap;
+  const _ComposerPill({required this.child, required this.active, required this.tc,
+      required this.onTap, this.activeColor});
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(14),
+    child: Container(
+      constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: active ? (activeColor ?? tc.toolbarActive) : tc.scaffold,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      alignment: Alignment.center,
+      child: child,
+    ),
+  );
 }
 
 // ── B / I / U toggle ──────────────────────────────────────────────────────────
@@ -1049,20 +1211,24 @@ class _AimMessageLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Glass theme gets modern bubble layout
-    if (tc.useGlass) return _buildGlassBubble(context);
+    // Bubble-based layout (Glass, Modern) vs flat AIM-line layout (everyone else).
+    if (tc.bubbleLayout) return _buildBubbleLayout(context);
     return _buildAimLine(context);
   }
 
-  // ── Glass bubble ────────────────────────────────────────────────────────────
-  Widget _buildGlassBubble(BuildContext context) {
+  // ── Bubble layout (Glass, Modern) ───────────────────────────────────────────
+  // Shared by both bubble themes; every color comes from VeilThemeColors so
+  // Glass keeps its exact purple/translucent look and Modern gets its own
+  // blue/white look without duplicating this method.
+  Widget _buildBubbleLayout(BuildContext context) {
     final t = event.originServerTs;
     final timeStr = '${t.hour.toString().padLeft(2,'0')}:${t.minute.toString().padLeft(2,'0')}';
+    final textColor = isMe ? Colors.white : tc.receivedBubbleTextColor;
 
     Widget body;
     if (event.type == EventTypes.Encrypted) {
       body = Text('🔒 Encrypted',
-        style: const TextStyle(color: Colors.white70, fontStyle: FontStyle.italic, fontSize: 15));
+        style: TextStyle(color: textColor.withAlpha(180), fontStyle: FontStyle.italic, fontSize: 15));
     } else if (event.messageType == MessageTypes.Image) {
       body = _buildNetworkImage(context, height: 200);
     } else if (event.messageType == MessageTypes.Video) {
@@ -1070,17 +1236,16 @@ class _AimMessageLine extends StatelessWidget {
     } else {
       final formattedBody = event.content['formatted_body'] as String?;
       if (formattedBody != null && formattedBody.isNotEmpty) {
-        final base = const TextStyle(fontSize: 15, color: Colors.white);
+        final base = TextStyle(fontSize: 15, color: textColor);
         final spans = htmlToSpans(formattedBody, base);
         body = RichText(text: TextSpan(children: spans));
       } else {
-        body = Text(event.body, style: const TextStyle(fontSize: 15, color: Colors.white));
+        body = Text(event.body, style: TextStyle(fontSize: 15, color: textColor));
       }
     }
 
-    final bubbleBg = isMe
-        ? const LinearGradient(colors: [Color(0xFF6D28D9), Color(0xFF4C1D95)])
-        : const LinearGradient(colors: [Color(0x22FFFFFF), Color(0x14FFFFFF)]);
+    final bubbleBg = LinearGradient(
+        colors: isMe ? tc.sentBubbleGradient : tc.receivedBubbleGradient);
 
     final borderRadius = isMe
         ? const BorderRadius.only(
@@ -1093,21 +1258,25 @@ class _AimMessageLine extends StatelessWidget {
     final bubble = Container(
       constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
       decoration: BoxDecoration(gradient: bubbleBg, borderRadius: borderRadius,
-        border: isMe ? null : Border.all(color: Colors.white.withAlpha(30))),
+        border: isMe || tc.receivedBubbleBorder == null
+            ? null : Border.all(color: tc.receivedBubbleBorder!),
+        boxShadow: [BoxShadow(color: Colors.black.withAlpha(15), blurRadius: 6, offset: const Offset(0, 2))]),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: body,
     );
+
+    final showSenderLabel = !isMe || tc.bubbleShowSenderBothSides;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
       child: Column(
         crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          if (!isMe)
+          if (showSenderLabel)
             Padding(
               padding: const EdgeInsets.only(left: 4, bottom: 2),
               child: Text(_senderName,
-                style: const TextStyle(fontSize: 11, color: Colors.white54, fontWeight: FontWeight.w600)),
+                style: TextStyle(fontSize: 11, color: tc.bubbleSenderLabelColor, fontWeight: FontWeight.w600)),
             ),
           bubble,
           if (_isDisappearing && event.messageType != MessageTypes.Image)
@@ -1117,7 +1286,7 @@ class _AimMessageLine extends StatelessWidget {
             ),
           Padding(
             padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
-            child: Text(timeStr, style: const TextStyle(fontSize: 10, color: Colors.white38)),
+            child: Text(timeStr, style: TextStyle(fontSize: 10, color: tc.bubbleTimestampColor)),
           ),
         ],
       ),

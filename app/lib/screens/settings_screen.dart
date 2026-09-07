@@ -345,66 +345,77 @@ class _ThemeSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-      child: Row(
+      // 6 themes now (was 4) — a single Row got cramped, so this is a 3-per-row grid.
+      child: GridView.count(
+        crossAxisCount: 3,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 4,
+        mainAxisSpacing: 14,
+        childAspectRatio: 0.86,
         children: VeilThemeMode.values.map((mode) {
           final t        = VeilThemeColors.forMode(mode);
           final selected = prefs.theme == mode;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => prefs.setTheme(mode),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  // Preview swatch
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    height: 60,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                          colors: [t.titleStart, t.titleEnd],
-                          begin: Alignment.topLeft, end: Alignment.bottomRight),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: selected ? tc.toolbarActive : Colors.transparent,
-                          width: 2.5),
-                      boxShadow: selected
-                          ? [BoxShadow(color: tc.toolbarActive.withAlpha(70),
-                              blurRadius: 10, spreadRadius: 1)]
-                          : null,
-                    ),
-                    child: Stack(children: [
-                      // Mini chat bubbles preview
-                      Positioned(bottom: 8, left: 6, right: 6,
-                        child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          Align(alignment: Alignment.centerRight,
-                            child: Container(width: 24, height: 7,
-                              decoration: BoxDecoration(
-                                color: t.badgeBg,
-                                borderRadius: BorderRadius.circular(4)))),
-                          const SizedBox(height: 3),
-                          Align(alignment: Alignment.centerLeft,
-                            child: Container(width: 18, height: 7,
-                              decoration: BoxDecoration(
-                                color: t.rowBg == Colors.transparent
-                                    ? Colors.white.withAlpha(40) : t.rowBg,
-                                borderRadius: BorderRadius.circular(4)))),
-                        ]),
-                      ),
-                      if (selected)
-                        const Positioned(top: 4, right: 4,
-                          child: Icon(Icons.check_circle, color: Colors.white, size: 14)),
-                    ]),
+          // Some swatches (Modern) have a light title-bar background — the
+          // "their bubble" chip and selected checkmark need dark ink there
+          // instead of the white that works on every other (dark) swatch.
+          final swatchIsLight = ThemeData.estimateBrightnessForColor(t.titleStart) == Brightness.light;
+          return GestureDetector(
+            onTap: () => prefs.setTheme(mode),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                // Preview swatch
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  height: 60,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                        colors: [t.titleStart, t.titleEnd],
+                        begin: Alignment.topLeft, end: Alignment.bottomRight),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: selected ? tc.toolbarActive : (swatchIsLight ? const Color(0xFFE4E7EF) : Colors.transparent),
+                        width: selected ? 2.5 : 1),
+                    boxShadow: selected
+                        ? [BoxShadow(color: tc.toolbarActive.withAlpha(70),
+                            blurRadius: 10, spreadRadius: 1)]
+                        : null,
                   ),
-                  const SizedBox(height: 5),
-                  Text(mode.label,
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                          color: selected ? tc.toolbarActive : tc.previewText),
-                      textAlign: TextAlign.center,
-                      maxLines: 2, overflow: TextOverflow.ellipsis),
-                ]),
-              ),
+                  child: Stack(children: [
+                    // Mini chat bubbles preview
+                    Positioned(bottom: 8, left: 6, right: 6,
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Align(alignment: Alignment.centerRight,
+                          child: Container(width: 24, height: 7,
+                            decoration: BoxDecoration(
+                              color: t.badgeBg,
+                              borderRadius: BorderRadius.circular(4)))),
+                        const SizedBox(height: 3),
+                        Align(alignment: Alignment.centerLeft,
+                          child: Container(width: 18, height: 7,
+                            decoration: BoxDecoration(
+                              color: swatchIsLight
+                                  ? Colors.black.withAlpha(20)
+                                  : (t.rowBg == Colors.transparent ? Colors.white.withAlpha(40) : t.rowBg),
+                              borderRadius: BorderRadius.circular(4)))),
+                      ]),
+                    ),
+                    if (selected)
+                      Positioned(top: 4, right: 4,
+                        child: Icon(Icons.check_circle,
+                            color: swatchIsLight ? tc.toolbarActive : Colors.white, size: 14)),
+                  ]),
+                ),
+                const SizedBox(height: 5),
+                Text(mode.label,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                        color: selected ? tc.toolbarActive : tc.previewText),
+                    textAlign: TextAlign.center,
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+              ]),
             ),
           );
         }).toList(),

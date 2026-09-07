@@ -7,10 +7,10 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../core/client_manager.dart';
-import '../core/aim_theme.dart';
 import '../core/conversation_prefs.dart';
 import '../core/veil_theme.dart';
 import '../core/veil_user_prefs.dart';
+import '../widgets/buddy_avatar.dart';
 
 // The app's root/home screen — the AIM-style buddy list. Shows message
 // requests (invites), the conversation list (filtered against hidden rooms),
@@ -259,19 +259,20 @@ class _TitleBar extends StatelessWidget {
     Widget bar = Container(
       padding: EdgeInsets.fromLTRB(16, topPad + 16, 8, 16),
       child: Row(children: [
-        Icon(Icons.lock, color: Colors.white.withAlpha(230), size: 22),
+        Icon(Icons.lock, color: tc.titleOnColor.withAlpha(230), size: 22),
         const SizedBox(width: 10),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Veil',
-              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+          Text('Veil',
+              style: TextStyle(color: tc.titleOnColor, fontSize: 22, fontWeight: FontWeight.bold)),
           Text(screenName,
-              style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 16),
+              style: TextStyle(color: tc.titleOnColor.withAlpha(200), fontSize: 16),
               overflow: TextOverflow.ellipsis),
         ])),
         // Theme cycle button
         _TitleIconBtn(
           icon: vtn.theme.icon,
           tooltip: 'Theme: ${vtn.theme.label}',
+          color: tc.titleOnColor,
           onTap: () {
             vtn.cycleTheme();
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -281,8 +282,8 @@ class _TitleBar extends StatelessWidget {
             ));
           },
         ),
-        _TitleIconBtn(icon: Icons.edit_note, tooltip: 'New message', onTap: onNew),
-        _TitleIconBtn(icon: Icons.settings, tooltip: 'Settings',
+        _TitleIconBtn(icon: Icons.edit_note, tooltip: 'New message', color: tc.titleOnColor, onTap: onNew),
+        _TitleIconBtn(icon: Icons.settings, tooltip: 'Settings', color: tc.titleOnColor,
             onTap: () => context.go('/buddylist/settings')),
       ]),
     );
@@ -294,7 +295,7 @@ class _TitleBar extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               color: tc.titleStart,
-              border: Border(bottom: BorderSide(color: Colors.white.withAlpha(20))),
+              border: Border(bottom: BorderSide(color: tc.titleBarBorderColor)),
             ),
             child: bar,
           ),
@@ -314,8 +315,9 @@ class _TitleBar extends StatelessWidget {
 class _TitleIconBtn extends StatelessWidget {
   final IconData icon;
   final String tooltip;
+  final Color color;
   final VoidCallback onTap;
-  const _TitleIconBtn({required this.icon, required this.tooltip, required this.onTap});
+  const _TitleIconBtn({required this.icon, required this.tooltip, required this.color, required this.onTap});
 
   @override
   Widget build(BuildContext context) => Tooltip(
@@ -325,7 +327,7 @@ class _TitleIconBtn extends StatelessWidget {
       borderRadius: BorderRadius.circular(24),
       child: Padding(
         padding: const EdgeInsets.all(10),
-        child: Icon(icon, color: Colors.white.withAlpha(220), size: 24),
+        child: Icon(icon, color: color.withAlpha(220), size: 24),
       ),
     ),
   );
@@ -437,7 +439,7 @@ class _BuddyRow extends StatelessWidget {
               border: Border(bottom: BorderSide(color: tc.divider, width: 0.5)),
             ),
       child: Row(children: [
-        _Avatar(initial: initial, tc: tc, isGroup: !room.isDirectChat),
+        BuddyAvatar(initial: initial, tc: tc, isGroup: !room.isDirectChat),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
@@ -495,48 +497,7 @@ class _BuddyRow extends StatelessWidget {
   }
 }
 
-// ── Avatar ─────────────────────────────────────────────────────────────────────
-
-class _Avatar extends StatelessWidget {
-  final String initial;
-  final VeilThemeColors tc;
-  // Groups don't get a presence dot — only DMs do
-  final bool isGroup;
-  const _Avatar({required this.initial, required this.tc, this.isGroup = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final child = Stack(children: [
-      Container(
-        width: 46, height: 46,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: tc.gradientAvatar
-              ? LinearGradient(
-                  colors: VeilThemeColors.avatarGradientFor(initial),
-                  begin: Alignment.topLeft, end: Alignment.bottomRight)
-              : null,
-          color: tc.gradientAvatar ? null : tc.solidAvatarBg,
-        ),
-        child: Center(child: Text(initial,
-            style: TextStyle(color: tc.avatarText, fontSize: 19, fontWeight: FontWeight.bold))),
-      ),
-      if (!isGroup)
-        Positioned(bottom: 1, right: 1,
-          child: Container(
-            width: 12, height: 12,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AimColors.online,
-              border: Border.all(color: tc.presenceBorder, width: 1.5),
-            ),
-          ),
-        ),
-    ]);
-
-    return SizedBox(width: 46, height: 46, child: child);
-  }
-}
+// Avatar rendering lives in widgets/buddy_avatar.dart (shared with hidden_chats_screen.dart).
 
 // ── Bottom toolbar ─────────────────────────────────────────────────────────────
 
@@ -550,6 +511,28 @@ class _BottomToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
+
+    // Modern: rounded floating pill bar instead of a flat full-width toolbar.
+    if (tc.floatingToolbar) {
+      return Container(
+        margin: EdgeInsets.fromLTRB(18, 0, 18, bottomPad + 14),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: tc.toolbarBg,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withAlpha(28), blurRadius: 28, offset: const Offset(0, 10)),
+            BoxShadow(color: Colors.black.withAlpha(14), blurRadius: 6, offset: const Offset(0, 2)),
+          ],
+        ),
+        child: Row(children: [
+          Expanded(child: _FloatingToolbarBtn(icon: Icons.message, label: 'IM', tc: tc, primary: true, onTap: onIM)),
+          Expanded(child: _FloatingToolbarBtn(icon: Icons.settings, label: 'Settings', tc: tc, primary: false, onTap: onSettings)),
+          Expanded(child: _FloatingToolbarBtn(icon: Icons.logout, label: 'Sign Off', tc: tc, primary: false, onTap: onSignOff)),
+        ]),
+      );
+    }
+
     Widget bar = Row(children: [
       _ToolbarBtn(icon: Icons.message, label: 'IM', tc: tc, onTap: onIM),
       _ToolbarBtn(icon: Icons.settings, label: 'Settings', tc: tc, onTap: onSettings),
@@ -607,6 +590,36 @@ class _ToolbarBtn extends StatelessWidget {
       ]),
     ),
   );
+}
+
+// Floating-pill toolbar button (Modern only). `primary` gives IM a subtle
+// accent tint — it's the most-used action, not a claim about the current
+// route, since this bar has no real "active tab" concept.
+class _FloatingToolbarBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VeilThemeColors tc;
+  final bool primary;
+  final VoidCallback onTap;
+  const _FloatingToolbarBtn({required this.icon, required this.label, required this.tc,
+      required this.primary, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = primary ? tc.toolbarActive : tc.toolbarText;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 22, color: color),
+          const SizedBox(height: 3),
+          Text(label, style: TextStyle(fontSize: 12.5, fontWeight: primary ? FontWeight.w700 : FontWeight.normal, color: color)),
+        ]),
+      ),
+    );
+  }
 }
 
 // ── Context menu bottom sheet ──────────────────────────────────────────────────

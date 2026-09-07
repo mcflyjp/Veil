@@ -7,6 +7,7 @@ import '../core/client_manager.dart';
 import '../core/conversation_prefs.dart';
 import '../core/veil_theme.dart';
 import '../core/veil_user_prefs.dart';
+import '../widgets/buddy_avatar.dart';
 
 // Lists conversations the user hid via the buddy list's long-press context
 // menu ("Hide Conversation"). Reads the conv_{roomId}_hidden SharedPreferences
@@ -97,20 +98,7 @@ class _HiddenChatsScreenState extends State<HiddenChatsScreen> {
                       final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
                       return ListTile(
                         tileColor: tc.rowBg == Colors.transparent ? null : tc.rowBg,
-                        leading: Container(
-                          width: 44, height: 44,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              colors: VeilThemeColors.avatarGradientFor(initial),
-                              begin: Alignment.topLeft, end: Alignment.bottomRight,
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(initial,
-                              style: TextStyle(color: tc.avatarText, fontSize: 18,
-                                  fontWeight: FontWeight.bold)),
-                        ),
+                        leading: BuddyAvatar(initial: initial, tc: tc, isGroup: true, size: 44),
                         title: Text(name, style: TextStyle(fontSize: 16,
                             color: tc.nameText, fontWeight: FontWeight.w500)),
                         subtitle: Text('Hidden',

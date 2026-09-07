@@ -16,7 +16,7 @@ const _kAccountDataType = 'im.veil.user_settings';
 /// Persists locally via SharedPreferences and syncs to Matrix account data
 /// so settings follow the user across every device they sign in on.
 class VeilUserPrefs extends ChangeNotifier {
-  VeilThemeMode _theme    = VeilThemeMode.aim;
+  VeilThemeMode _theme    = VeilThemeMode.modern;
   String  _fontFamily     = 'Arial';
   double  _fontSize       = 16.0;
   bool    _bold           = false;
@@ -89,9 +89,11 @@ class VeilUserPrefs extends ChangeNotifier {
 
   Future<void> _loadLocal() async {
     final p = await SharedPreferences.getInstance();
+    // 'modern' is the default for anyone who has never set a preference —
+    // existing users keep whatever they already have saved (no forced migration).
     _theme = VeilThemeMode.values.firstWhere(
-      (e) => e.name == (p.getString('veil_app_theme') ?? 'aim'),
-      orElse: () => VeilThemeMode.aim,
+      (e) => e.name == (p.getString('veil_app_theme') ?? 'modern'),
+      orElse: () => VeilThemeMode.modern,
     );
     _fontFamily = p.getString('user_font_family')   ?? 'Arial';
     _fontSize   = p.getDouble('user_font_size')     ?? 16.0;
@@ -157,7 +159,7 @@ class VeilUserPrefs extends ChangeNotifier {
     final themeName = c['theme'] as String?;
     if (themeName != null) {
       final mode = VeilThemeMode.values.firstWhere(
-        (e) => e.name == themeName, orElse: () => VeilThemeMode.aim);
+        (e) => e.name == themeName, orElse: () => VeilThemeMode.modern);
       if (mode != _theme) { _theme = mode; changed = true; }
     }
 

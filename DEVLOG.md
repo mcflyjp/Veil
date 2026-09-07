@@ -1,5 +1,21 @@
 # Veil — Development Log
 
+## 2026-07-19 — v0.1.36 (Modern default theme + AIM Remastered)
+
+**[ADD] Modern theme — new default** — A contemporary bubble-based layout (iMessage/Telegram-grade polish) built from the "Direction B" mockup. Keeps Veil's AIM soul through the signature blue and screen-name labels shown above both sent and received bubbles (not hidden behind avatars-only), plus the existing font/color customization surfaced as a first-class pill row in the composer (Aa chip, B/I/U pills, disappearing-timer pill) instead of a small icon. Floating rounded pill bottom toolbar. Gradient-ring avatars with a presence glow. This is now the default theme for anyone who has never set a preference — existing users keep whatever they already had (no forced migration).
+
+**[ADD] AIM Remastered theme** — "Direction A": the exact flat AIM-line structure of AIM Classic (list-row buddy list, `[HH:MM] ScreenName: text`), executed with richer multi-stop-feeling gradients, the same new gradient-ring avatars, and refined coral/blue tones. A secondary, opt-in theme — AIM Classic, Dark, Glass, and Light are all unchanged.
+
+**[REFACTOR] Bubble rendering decoupled from Glass specifically** — Message-bubble colors (sent/received gradients, text color, sender-label color, timestamp color, border) moved from hardcoded values in `_buildGlassBubble` onto `VeilThemeColors`, and the method generalized to `_buildBubbleLayout` so both Glass and Modern share one implementation instead of duplicating it. Glass's exact existing look (purple/indigo sent gradient, translucent received bubble, white54/white38 text) is preserved via explicit token values — this was a refactor, not a Glass redesign.
+
+**[FIX] Title bar hardcoded white text/icons** — `buddy_list_screen.dart`'s `_TitleBar` and `_TitleIconBtn` hardcoded `Colors.white` for the "Veil" wordmark, screen name, lock icon, and toolbar icons. Harmless while every theme's title bar was a dark gradient, but Modern's title bar is near-white — this would have made the title bar text invisible. Both widgets now take `tc.titleOnColor`.
+
+**[FIX] Theme-picker swatch contrast for light swatches** — The Settings theme grid's preview swatch used a hardcoded white "their bubble" chip and white checkmark, assuming every swatch background is dark. Now checks each swatch's estimated brightness and uses dark ink on light swatches (Modern) — Settings theme grid also switched from a single Row to a 3-per-row GridView now that there are 6 themes instead of 4.
+
+**[ADD] Shared `BuddyAvatar` widget** (`widgets/buddy_avatar.dart`) — promoted from buddy_list_screen.dart's private `_Avatar`, now also used by Hidden Chats so avatar treatment (including the new gradient ring) stays consistent across both screens instead of hidden_chats_screen.dart drawing its own inline avatar.
+
+---
+
 ## 2026-07-18 — v0.1.35 (codebase documentation pass)
 
 **[DOCS] Header + section comments added to every file in lib/** — All 21 Dart files now start with a short comment explaining what the file is for and how it fits into the app, and every large file has section-block comments marking its major logical zones (e.g. chat_screen.dart: lifecycle, sending text, sending media, disappearing-message controls, build). Comment-only change, zero logic touched; `flutter analyze` confirmed clean before and after.
