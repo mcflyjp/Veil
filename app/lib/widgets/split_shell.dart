@@ -4,6 +4,13 @@ import '../screens/buddy_list_screen.dart';
 import '../core/aim_theme.dart';
 import '../core/veil_user_prefs.dart';
 
+// Adaptive layout shell used as the ShellRoute builder in core/router.dart.
+// Wide screens (tablet/desktop/web) get a permanent two-pane buddy-list +
+// chat layout; narrow screens (phone) get a single-pane stack where the chat
+// screen overlays the buddy list via Offstage rather than a real navigation
+// push — see the long comment below for why (this is the fix for the
+// recurring "gray screen on chat re-entry" bug).
+
 /// Breakpoint above which the two-panel layout kicks in.
 const double kSplitBreak = 700;
 

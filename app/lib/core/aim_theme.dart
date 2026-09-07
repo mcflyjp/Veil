@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 
+// Static Win98-era AOL Instant Messenger color constants (AimColors) plus the
+// two Flutter ThemeData objects (AimTheme.light / AimTheme.dark) built from
+// them. This is the MaterialApp base theme in main.dart, distinct from the
+// per-theme VeilThemeColors palette in veil_theme.dart — AimTheme only ever
+// backs the "AIM Classic" / default Material chrome (buttons, text fields,
+// app bar), while VeilThemeColors drives the buddy list / chat screen colors.
+
 class AimColors {
   // Title bar gradient — classic AIM deep blue
   static const titleBarStart = Color(0xFF17369C);

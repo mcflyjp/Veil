@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 
+// Color palette definitions for the four app-wide UI themes (aim/dark/glass/light).
+// VeilThemeColors is a plain data class of named colors consumed by nearly every
+// screen and widget in the app; VeilUserPrefs (core/veil_user_prefs.dart) owns
+// the current VeilThemeMode selection and exposes `.colors` for the active theme.
+// This file has no app state of its own — just color constants and lookups.
+
 enum VeilThemeMode { aim, dark, glass, light }
 
 extension VeilThemeModeLabel on VeilThemeMode {

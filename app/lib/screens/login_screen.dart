@@ -5,6 +5,12 @@ import 'package:provider/provider.dart';
 import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
 
+// Sign-in / registration screen (AIM-styled login window) plus its QR-code
+// scanner sheet for logging into a new device by scanning the token shown
+// on an already-signed-in device (see LinkedDevicesScreen for the QR
+// generator side). Shown whenever go_router's redirect finds no active
+// Matrix session.
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 

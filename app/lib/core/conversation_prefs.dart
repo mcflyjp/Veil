@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// Per-conversation overrides (font, mute, hidden, disappearing timer default,
+// bubble theme) stored under SharedPreferences keys prefixed conv_{roomId}_.
+// Loaded on demand per room (ConversationPrefs.load) rather than kept in a
+// global provider, since only one conversation's settings are open at a time.
+
 /// Per-conversation settings stored in shared_preferences.
 /// Key prefix: conv_{roomId}_{setting}
 class ConversationPrefs {

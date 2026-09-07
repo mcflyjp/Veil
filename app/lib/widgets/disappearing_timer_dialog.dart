@@ -1,6 +1,15 @@
 import 'package:flutter/material.dart';
 import '../core/aim_theme.dart';
 
+// LEGACY — sets a room-level m.room.message_retention state event with old
+// timer options (30s/5m/1h/1d/1week). Superseded by the per-message,
+// view-triggered disappearing timer added in v0.1.31 (see
+// DisappearingMessageService and chat_screen.dart's _pickDisappearTimer /
+// _pickEventDisappearTimer, which use the current 3s/5s/10s/1m options).
+// Only reachable through chat_screen.dart's _setDisappearing(), which itself
+// is wired to the chat title bar's timer icon but predates the redesign —
+// review before relying on it; the per-message picker is the current path.
+
 class DisappearingTimerDialog extends StatelessWidget {
   const DisappearingTimerDialog({super.key});
 

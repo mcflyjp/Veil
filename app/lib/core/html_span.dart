@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 
+// Minimal hand-rolled HTML parser (no external package) that turns a Matrix
+// formatted_body string into Flutter InlineSpans for RichText. Only supports
+// the tiny tag set Veil's own font/format toolbar emits (b, i, u, font) plus
+// br and basic entities — not a general HTML renderer. Used by chat_screen.dart
+// to render sender-formatted message text.
+
 /// Parses a small subset of Matrix/AIM HTML into InlineSpans for RichText.
 /// Supported tags: b, i, u, font (face/data-pt attributes), br, and HTML entities.
 List<InlineSpan> htmlToSpans(String html, TextStyle base) {

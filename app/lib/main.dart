@@ -8,6 +8,11 @@ import 'core/aim_theme.dart';
 import 'core/veil_theme.dart';
 import 'core/veil_user_prefs.dart';
 
+// App entry point. Boots NotificationService and the Matrix ClientManager
+// before the first frame, wires both plus VeilUserPrefs into a MultiProvider,
+// and builds the root MaterialApp.router widget (VeilApp below) that hosts
+// the go_router route table from core/router.dart.
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.instance.init();
@@ -72,6 +77,10 @@ void main() async {
     ),
   );
 }
+
+// ── Root widget ──────────────────────────────────────────────────────────
+// Picks light/dark Material baseline based on the active Veil theme and
+// hands off routing to the GoRouter built in initState.
 
 class VeilApp extends StatefulWidget {
   final ClientManager clientManager;

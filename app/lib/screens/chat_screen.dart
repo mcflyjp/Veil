@@ -20,6 +20,18 @@ import '../core/veil_theme.dart';
 import '../core/veil_user_prefs.dart';
 import '../widgets/disappearing_timer_dialog.dart';
 
+// The chat window — by far the largest screen in the app. Renders the message
+// timeline (AIM flat-text layout or Glass bubble layout depending on theme),
+// the formatting/media toolbar, the text input, and owns per-message
+// disappearing-timer scheduling for whatever is currently on screen. Roughly:
+//   _ChatScreenState        — lifecycle, sending, disappearing-timer wiring, build()
+//   _FormatToggle / _FontPickerDialog / _DialogToggle — B/I/U + font size picker
+//   _AimMessageLine          — renders one message (both AIM and Glass layouts)
+//   _InlineVideoDialog       — fullscreen video playback
+//   _ChatTitleBar            — chat-specific title bar (back/add-member/timer icons)
+//   _MsgMenuTile / _BarBtn   — small shared building blocks
+//   _DisappearingCountdown   — live ⏱ Xs countdown used on messages and image overlays
+
 const _kFonts = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Comic Sans MS', 'Georgia'];
 const _kSizes = [14.0, 16.0, 18.0, 20.0, 22.0, 24.0];
 
@@ -32,6 +44,7 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  // ── State fields ─────────────────────────────────────────────────────
   late ClientManager _mgr;
   final _inputCtrl  = TextEditingController();
   final _scrollCtrl = ScrollController();
@@ -55,6 +68,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Room? get _room =>
       _mgr.roomById(Uri.decodeComponent(widget.roomId));
+
+  // ── Lifecycle ────────────────────────────────────────────────────────
+  // _mgr is captured here (not via context.read in dispose) because
+  // BuildContext is unsafe to use once deactivate() has run — see DEVLOG
+  // v0.1.32 for the gray-screen regression this fixed.
 
   @override
   void initState() {
@@ -89,6 +107,13 @@ class _ChatScreenState extends State<ChatScreen> {
     _inputFocus.dispose();
     super.dispose();
   }
+
+  // ── Timeline loading & view-triggered disappearing-message scheduling ──
+  // The disappearing-message timer starts when a message is actually viewed,
+  // not when it's sent. _scheduleVisibleDisappearing runs on every
+  // ClientManager notification (each sync) while this chat is open, scanning
+  // the timeline for unscheduled veil_disappear_secs messages. See
+  // DisappearingMessageService for the timer/redaction side.
 
   Future<void> _loadTimeline() async {
     final roomId = Uri.decodeComponent(widget.roomId);
@@ -141,6 +166,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // ── Read receipts & typing indicator ────────────────────────────────────
+
   Future<void> _setReadMarker() async {
     final room = _room;
     final tl   = _timeline;
@@ -172,6 +199,11 @@ class _ChatScreenState extends State<ChatScreen> {
       room.setTyping(false);
     });
   }
+
+  // ── Sending text messages ────────────────────────────────────────────
+  // _buildHtml wraps the plain text in a minimal formatted_body only when the
+  // user has non-default font settings active, so plain messages stay plain
+  // for other Matrix clients.
 
   String? _buildHtml(String text, VeilUserPrefs prefs) {
     final hasFormatting = prefs.bold || prefs.italic || prefs.underline
@@ -227,6 +259,10 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) setState(() => _sending = false);
     }
   }
+
+  // ── Sending media (photo, video, file) ───────────────────────────────
+  // All three enforce a 100 MB cap and read from disk rather than loading the
+  // whole file into memory up front, to avoid OOM crashes on large files.
 
   Future<void> _pickMedia() async {
     final tc = context.read<VeilUserPrefs>().colors;
@@ -301,6 +337,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // ── Group membership ──────────────────────────────────────────────────
+
   Future<void> _addMember() async {
     final room = _room;
     if (room == null) return;
@@ -351,6 +389,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // (back to media sending — staged image confirm, then generic file send)
+
   Future<void> _sendStagedImage(Room room) async {
     final imgFile  = _pendingImage;
     final imgBytes = _pendingImageBytes;
@@ -395,6 +435,14 @@ class _ChatScreenState extends State<ChatScreen> {
         SnackBar(content: Text('Failed to send file: $e'), duration: const Duration(seconds: 4)));
     } finally { if (mounted) setState(() => _sending = false); }
   }
+
+  // ── Disappearing-message controls ────────────────────────────────────
+  // _setDisappearing is LEGACY / UNUSED in practice: it sets a room-level
+  // retention policy via the old DisappearingTimerDialog and is only wired to
+  // the chat title bar's timer icon, which predates the v0.1.31 redesign.
+  // The active compose-time picker is _pickDisappearTimer below (toolbar
+  // clock icon); the active per-message picker is _pickEventDisappearTimer
+  // (long-press menu). Both use DisappearingMessageService, not room state.
 
   Future<void> _setDisappearing() async {
     final room = _room;
@@ -520,6 +568,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // ── Font/formatting picker ───────────────────────────────────────────
+
   void _openFontPicker(VeilUserPrefs prefs) {
     showDialog(
       context: context,
@@ -534,6 +584,8 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
+
+  // ── Build ────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {

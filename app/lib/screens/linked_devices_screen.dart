@@ -7,6 +7,12 @@ import '../core/client_manager.dart';
 import '../core/veil_theme.dart';
 import '../core/veil_user_prefs.dart';
 
+// Device management screen (Settings → Privacy & Security → Linked Devices).
+// Two responsibilities: lists every device signed into the account with
+// revoke (password re-auth via Matrix UIA, see ClientManager.deleteDevice),
+// and generates the QR code a second device scans to sign in without typing
+// a password (ClientManager.requestLoginToken / the login screen's scanner).
+
 class LinkedDevicesScreen extends StatefulWidget {
   const LinkedDevicesScreen({super.key});
   @override
@@ -33,6 +39,8 @@ class _LinkedDevicesScreenState extends State<LinkedDevicesScreen> {
       if (mounted) setState(() => _error = e.toString().replaceAll('Exception: ', ''));
     }
   }
+
+  // ── Revoke device (password re-auth via Matrix UIA) ────────────────────
 
   Future<void> _revokeDevice(BuildContext ctx, Device device, VeilThemeColors tc) async {
     final mgr    = context.read<ClientManager>();
@@ -101,6 +109,8 @@ class _LinkedDevicesScreenState extends State<LinkedDevicesScreen> {
       }
     }
   }
+
+  // ── QR-code add-device flow ─────────────────────────────────────────────
 
   Future<void> _showAddDeviceQr(BuildContext ctx, VeilThemeColors tc) async {
     final mgr = context.read<ClientManager>();

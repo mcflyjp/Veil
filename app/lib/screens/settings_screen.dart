@@ -5,6 +5,11 @@ import '../core/client_manager.dart';
 import '../core/veil_theme.dart';
 import '../core/veil_user_prefs.dart';
 
+// Account settings screen: profile card (avatar, display name edit, locked
+// screen-name chip), theme picker, privacy/security info + link to Linked
+// Devices, and sign out. Display name is fetched from the Matrix profile on
+// open (fetchDisplayName) rather than kept in ClientManager state.
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 

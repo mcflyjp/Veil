@@ -8,6 +8,12 @@ import '../core/conversation_prefs.dart';
 import '../core/veil_theme.dart';
 import '../core/veil_user_prefs.dart';
 
+// Lists conversations the user hid via the buddy list's long-press context
+// menu ("Hide Conversation"). Reads the conv_{roomId}_hidden SharedPreferences
+// flag directly (mirrors ConversationPrefs' key scheme). Unhiding calls
+// ClientManager.forceRefresh() so the buddy list picks up the change
+// immediately without waiting for the next Matrix sync.
+
 class HiddenChatsScreen extends StatefulWidget {
   const HiddenChatsScreen({super.key});
   @override

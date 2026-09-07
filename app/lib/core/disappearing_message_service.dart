@@ -2,6 +2,14 @@ import 'dart:async';
 import 'package:matrix/matrix.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// Per-message disappearing-timer engine. A timer is only ever started once a
+// message has actually been viewed (chat_screen.dart calls schedule() from
+// its "visible in an open chat" scan) — not at send time — matching Telegram-
+// style behavior. Timers are kept both in memory (_timers, for instant
+// isArmed()/remaining() checks) and in SharedPreferences (so they survive an
+// app restart via loadAndReschedule). When a timer fires it redacts the
+// Matrix event, which deletes it for everyone in the room.
+
 /// Persists per-message disappear timers and fires Matrix redactions when they expire.
 /// Storage key: 'disappear_{eventId}' = '{roomId}|{expireAtMs}'
 class DisappearingMessageService {

@@ -9,6 +9,12 @@ import '../screens/hidden_chats_screen.dart';
 import '../screens/linked_devices_screen.dart';
 import '../widgets/split_shell.dart';
 
+// Route table for the whole app. Login lives outside the shell; every
+// authenticated screen (chat, new message, settings, hidden chats, devices)
+// is a child route of a single ShellRoute wrapped in SplitShell, which
+// decides side-by-side vs. overlay layout. `redirect` enforces the
+// logged-in/logged-out split so screens never need their own auth checks.
+
 /// Instant page swap — no slide/fade animation so there is no gray flash.
 Page<void> _noTransition(Widget child) =>
     NoTransitionPage<void>(child: child);

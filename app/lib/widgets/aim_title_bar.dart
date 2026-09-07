@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import '../core/aim_theme.dart';
 
+// Generic reusable AIM-gradient title bar (back button + title + optional
+// actions). Used by simpler screens like NewChatScreen; the buddy list,
+// chat, settings, hidden-chats, and linked-devices screens each build their
+// own inline title bar instead since they need theme-aware colors from
+// VeilThemeColors rather than the static AimColors this widget uses.
+
 class AimTitleBar extends StatelessWidget {
   final String title;
   final bool isDark;

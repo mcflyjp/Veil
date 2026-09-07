@@ -12,6 +12,16 @@ import '../core/conversation_prefs.dart';
 import '../core/veil_theme.dart';
 import '../core/veil_user_prefs.dart';
 
+// The app's root/home screen — the AIM-style buddy list. Shows message
+// requests (invites), the conversation list (filtered against hidden rooms),
+// a footer linking to hidden chats, a theme-aware title bar, and a bottom
+// toolbar (IM / Settings / Sign Off). Muted and hidden state both live in
+// SharedPreferences and are cached/warmed here so filtering never blocks
+// the build. Below _BuddyListScreenState are all the private widget classes
+// that make up a row: glow orb (Glass theme), title bar, section headers,
+// buddy row + avatar, bottom toolbar, the long-press context menu sheet,
+// message-request row, hidden-chats footer, and the empty state.
+
 // SharedPreferences key helpers for hidden state (mirrors ConversationPrefs._k)
 String _hiddenKey(String roomId) => 'conv_${roomId}_hidden';
 
@@ -22,6 +32,9 @@ class BuddyListScreen extends StatefulWidget {
 }
 
 class _BuddyListScreenState extends State<BuddyListScreen> {
+  // ── Muted / hidden state cache ─────────────────────────────────────────
+  // Both caches are warmed on initState so build() and the row filter below
+  // can read them synchronously — never awaiting SharedPreferences mid-build.
   final Map<String, bool> _mutedCache = {};
   // SharedPreferences singleton used to read hidden state synchronously on every build.
   // Loaded once; subsequent reads are in-memory so they never block the UI thread.
@@ -64,6 +77,8 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
     await p.setBool('conv_${roomId}_muted', v);
     setState(() => _mutedCache[roomId] = v);
   }
+
+  // ── Conversation actions (delete, long-press menu) ─────────────────────
 
   Future<void> _confirmDelete(BuildContext ctx, Room room, VeilThemeColors tc) async {
     final confirmed = await showDialog<bool>(
@@ -113,6 +128,8 @@ class _BuddyListScreenState extends State<BuddyListScreen> {
     _prefs = await SharedPreferences.getInstance();
     if (mounted) setState(() {});
   }
+
+  // ── Build ────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {

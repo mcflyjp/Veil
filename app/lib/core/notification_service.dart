@@ -1,6 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+// Local (on-device) push notification wrapper around flutter_local_notifications.
+// Singleton so ClientManager's onEvent listener and the UI (chat screen open/close,
+// notification tap routing in main.dart) can all reach the same instance.
+// Android only for now — every method no-ops on web.
+
 class NotificationService {
   NotificationService._();
   static final instance = NotificationService._();

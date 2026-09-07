@@ -6,6 +6,12 @@ import 'veil_theme.dart';
 
 const _kAccountDataType = 'im.veil.user_settings';
 
+// User-level appearance settings (theme + font family/size/bold/italic/underline).
+// Unlike ConversationPrefs (per-room, local only), these follow the user across
+// devices: every change is written to SharedPreferences immediately and pushed
+// to Matrix account data, and every sync pulls remote changes back in so a
+// theme switch on one device shows up on all of them.
+
 /// Holds the user's theme choice and font formatting prefs.
 /// Persists locally via SharedPreferences and syncs to Matrix account data
 /// so settings follow the user across every device they sign in on.

@@ -6,6 +6,10 @@ import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
 import '../widgets/aim_title_bar.dart';
 
+// "Send Instant Message" screen — starts either a direct message (resolves a
+// bare screen name to @name:veilmsg.com and calls startDirectChat) or a new
+// group chat (createRoom with E2E encryption enabled to match DM behaviour).
+
 class NewChatScreen extends StatefulWidget {
   const NewChatScreen({super.key});
 

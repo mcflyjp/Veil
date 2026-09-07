@@ -3,6 +3,12 @@ import 'package:matrix/matrix.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../core/aim_theme.dart';
 
+// UNUSED — not imported or referenced anywhere in the app. A generic chat
+// bubble widget that predates chat_screen.dart's own message rendering
+// (_AimMessageLine), which replaced this with theme-aware AIM/glass layouts.
+// Kept around in case a future generic bubble layout is wanted; safe to
+// delete otherwise.
+
 class MessageBubble extends StatelessWidget {
   final Event event;
   final bool isMe;

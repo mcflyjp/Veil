@@ -10,6 +10,14 @@ import 'notification_service.dart';
 
 const kHomeserver = 'https://matrix.veilmsg.com';
 
+// Central Matrix client wrapper and the single most-depended-on class in the
+// app. Owns the matrix_dart_sdk Client instance, wires up sync/event listeners
+// (new-message and invite notifications), and exposes everything screens need:
+// login/register/logout, the room list, a per-room Timeline cache (so chats
+// never re-fetch history on re-entry), profile edits, and device management
+// (list/revoke/QR-code login token for adding a new device). Shared app-wide
+// via Provider; most screens reach it with context.watch/read<ClientManager>().
+
 class ClientManager extends ChangeNotifier {
   late Client _client;
   Client get client => _client;
@@ -21,6 +29,10 @@ class ClientManager extends ChangeNotifier {
 
   /// Room IDs we've already fired an invite notification for.
   final _knownInvites = <String>{};
+
+  // ── Startup / sync wiring ─────────────────────────────────────────────
+  // Opens the local Matrix SDK database, starts the client, and attaches the
+  // sync/event listeners that drive invite and new-message notifications.
 
   Future<void> init() async {
     late MatrixSdkDatabase db;
@@ -96,6 +108,8 @@ class ClientManager extends ChangeNotifier {
     _isReady = true;
     notifyListeners();
   }
+
+  // ── Auth: login, register, logout ────────────────────────────────────
 
   Future<void> login(String username, String password) async {
     await _client.checkHomeserver(Uri.parse(kHomeserver));
@@ -204,6 +218,8 @@ class ClientManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Rooms & profile ─────────────────────────────────────────────────────
+
   List<Room> get rooms {
     final joined = _client.rooms
         .where((r) => r.membership == Membership.join)
@@ -296,6 +312,8 @@ class ClientManager extends ChangeNotifier {
       throw Exception('${e['errcode'] ?? 'ERROR'}: ${e['error'] ?? r2.body}');
     }
   }
+
+  // ── QR-code device linking (Matrix 1.7 login token flow) ───────────────
 
   /// Generates a short-lived single-use login token for QR-code device linking.
   /// Token is valid for ~2 minutes (Matrix spec 1.7 login token flow).

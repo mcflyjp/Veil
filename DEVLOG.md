@@ -1,5 +1,15 @@
 # Veil — Development Log
 
+## 2026-07-18 — v0.1.35 (codebase documentation pass)
+
+**[DOCS] Header + section comments added to every file in lib/** — All 21 Dart files now start with a short comment explaining what the file is for and how it fits into the app, and every large file has section-block comments marking its major logical zones (e.g. chat_screen.dart: lifecycle, sending text, sending media, disappearing-message controls, build). Comment-only change, zero logic touched; `flutter analyze` confirmed clean before and after.
+
+While auditing for this, found and flagged three dead-code paths so they're easy to spot going forward rather than being silently removed: `widgets/message_bubble.dart` and `widgets/presence_dot.dart` are unused (not imported anywhere — superseded by chat_screen.dart's `_AimMessageLine` and buddy_list_screen.dart's inline `_Avatar`), and `widgets/disappearing_timer_dialog.dart` is only reachable through `chat_screen.dart`'s `_setDisappearing()`, a room-level retention setter that predates the v0.1.31 per-message redesign and is not part of the current disappearing-message flow.
+
+**[DECISION] Header + section comments are now standard for all new Veil code** — every new file should open with a short comment on its purpose, and large files should get section-block comments (`// ── Section ──`, no double-dashes) around their major logical zones. Applies going forward, not just this pass.
+
+---
+
 ## 2026-07-18 — v0.1.34 (iOS IPA CI build)
 
 **[INFRA] iOS unsigned IPA distributed via GitHub Releases** — Added `build-ios` job to CI using `macos-latest` runner. Runs `flutter build ipa --no-codesign --obfuscate --split-debug-info=...` and attaches `Runner.ipa` to the GitHub Release alongside the APK. No Apple Developer account required for the build — users install via Sideloadly, AltStore, or TrollStore (same sideload pattern used by open-source iOS projects like Gen1Recomp). iOS platform target (`app/ios/`) was already scaffolded.
