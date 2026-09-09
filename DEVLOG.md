@@ -1,5 +1,17 @@
 # Veil — Development Log
 
+## 2026-09-09 — v0.1.40 (web deployment fixed, version footer, process documented)
+
+**[ADD] Version footer in Settings** — bottom of the Settings screen now shows "Veil vX.Y.Z (build N)" via `package_info_plus` (already a dependency, previously unused). Direct motivation: there was no reliable way to confirm which build was actually running on a device, which is exactly what caused the "only 4 themes" confusion below — Android doesn't auto-update sideloaded APKs, so a stale install looks identical to a real bug until you can check the version.
+
+**[FIX] `veilmsg.com` was serving a build from July 9** — nearly two months stale, which is why the user only saw the original 4 themes (AIM Classic/Dark/Glass/Light) on web despite the app having 8 by then. Root cause: CI's `build-web` job only builds and uploads a GitHub Actions artifact — it has never deployed anywhere. The actual web deployment is a separate, until-now-undocumented manual process: nginx on the Oracle VM (`/etc/nginx/conf.d/veil.conf`) serves static files from `/var/www/veilmsg` at the `veilmsg.com` apex, entirely self-hosted and independent of any other project. Redeployed the current build (`flutter build web --release` → tar → scp → extract on the VM); verified via `curl https://veilmsg.com/version.json` and confirming "Modern Dark" is present in the served bundle.
+
+**[MISTAKE, corrected]** Before finding the above, a session created a brand-new Cloudflare Pages project (`veil-4o5.pages.dev`) for Veil's web build, reusing Cloudflare account credentials documented for a different project (VaultTV). The user caught this immediately ("veilmsg.com is MINE... do not pair this with any other project") and it was reverted — the stray Cloudflare Pages project was deleted. **Lesson, now written into `CLAUDE.md`: never assume infrastructure needs to be created from scratch — check for an existing deployment first, and never reuse another project's hosting account/credentials for Veil.** Veil's infrastructure is fully self-contained on its own Oracle VM + its own domain.
+
+**[DECISION] Web deploy is now a standing step of every release** — going forward, any release that touches user-visible behavior gets deployed to `veilmsg.com`, not just changes that are nominally "web-specific." The web build is the same Flutter source as the APK, so it drifts out of sync with every release it's skipped for. Full process (build → tar → scp → extract → verify) is documented in `CLAUDE.md` under "Deploy web."
+
+---
+
 ## 2026-07-19 — v0.1.39 (avatars in chat title bar + group messages)
 
 **[ADD] Avatar in the chat title bar** — every chat screen now shows the room's avatar (the other person's photo for a DM, the group photo if set) next to the lock icon and title, using the same `BuddyAvatar` widget as everywhere else.

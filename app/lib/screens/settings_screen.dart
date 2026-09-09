@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:matrix/matrix.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import '../core/client_manager.dart';
 import '../core/veil_theme.dart';
@@ -26,11 +27,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _displayName;
   bool _loadingName = true;
   Uri? _avatarUrl;
+  String? _versionLabel;
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
+    _loadVersion();
+  }
+
+  // Shown at the bottom of the screen so "am I on the latest build" is never
+  // ambiguous — Android doesn't auto-update sideloaded APKs, so this is the
+  // only reliable way to confirm a fresh install actually took.
+  Future<void> _loadVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _versionLabel = 'v${info.version} (${info.buildNumber})');
+    } catch (_) {
+      // Non-fatal — just don't show the footer.
+    }
   }
 
   Future<void> _loadProfile() async {
@@ -300,6 +315,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ],
               ),
+
+              if (_versionLabel != null) ...[
+                const SizedBox(height: 20),
+                Center(child: Text('Veil ${_versionLabel!}',
+                    style: TextStyle(fontSize: 12, color: tc.previewText))),
+              ],
             ],
           ),
         ),
