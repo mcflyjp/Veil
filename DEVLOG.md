@@ -1,5 +1,20 @@
 # Veil — Development Log
 
+## 2026-09-09 — v0.1.42 (fixed release signing — no more forced uninstalls)
+
+**[FIX] Every release forced users to uninstall before installing the next one** — root cause: `android/app/build.gradle.kts` signed release builds with the **debug** signing config (Flutter's default template setting, never replaced). CI runs on a fresh ephemeral machine every time, so the debug keystore isn't guaranteed consistent between builds — Android refuses to install an update signed with a different key than the currently-installed one, forcing a full uninstall every time.
+
+Generated a dedicated, permanent release keystore (RSA 2048, valid until 2054) and wired it in:
+- CI (`build.yml`) decodes it from `ANDROID_KEYSTORE_BASE64` + password secrets and writes `key.properties` before every build
+- Local builds use `android/key.properties` (gitignored) copied from the new `key.properties.example` template
+- `build.gradle.kts` uses it for release builds, falling back to debug signing only when `key.properties` is absent (so a fresh checkout can still build locally without the real keystore)
+
+The keystore itself was handed to the user as a backup (never committed to git — losing it would reintroduce this exact bug permanently, since every future release must be signed with the same key to update in place).
+
+**This release (v0.1.42) is the last one that will need a manual uninstall** — it's signed with the new key for the first time, which differs from whatever key signed what's currently installed. Every release after this one will update in place normally.
+
+---
+
 ## 2026-09-09 — v0.1.41 (real app icon — "Veil mark")
 
 **[ADD] Real app icon, replacing the default Flutter logo** — Veil has shipped with the unmodified default Flutter "f" logo as its icon since the project started; every screen/build has been branded, but the icon itself never was. Fixed using the "Veil mark" concept (speech bubble + lock, signature blue gradient) that was approved from the earlier mockup canvas.

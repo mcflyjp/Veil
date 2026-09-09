@@ -1,0 +1,8 @@
+# Copy to key.properties (gitignored) for a local release build.
+# CI writes the real key.properties from GitHub secrets automatically —
+# you only need this for `flutter build apk --release` on your own machine.
+# Ask for the real values; never regenerate this keystore, see build.gradle.kts.
+storePassword=REPLACE_ME
+keyPassword=REPLACE_ME
+keyAlias=veil
+storeFile=../veil-release.keystore

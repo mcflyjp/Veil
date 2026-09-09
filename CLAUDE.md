@@ -90,6 +90,29 @@ Regenerates every platform's icon files (Android legacy + adaptive, iOS,
 macOS, web favicon/PWA). Don't hand-edit the generated platform icon files
 directly — re-run the generator instead.
 
+### Android release signing
+Every release APK (CI and local) is signed with a dedicated keystore —
+**never the debug key**. Signing this with debug was the original bug
+(fixed 2026-09-09): CI runs on a fresh machine every time, so the debug
+keystore wasn't consistent between builds, and every release forced users
+to uninstall before installing the next one.
+
+- CI: `.github/workflows/build.yml`'s "Set up release signing" step decodes
+  `ANDROID_KEYSTORE_BASE64` and writes `app/android/key.properties` from
+  the `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD`
+  GitHub secrets before every build.
+- Local: copy `app/android/key.properties.example` → `key.properties`,
+  fill in the real values (ask for them), place the keystore file at
+  `app/android/veil-release.keystore`. Both are gitignored.
+- **Never regenerate this keystore.** It's the permanent signing identity
+  for Veil — losing it means every future release forces a fresh
+  uninstall/reinstall for every user, forever, the same problem this fix
+  solved. The user holds a backup copy; ask them if it's ever needed.
+- `android/app/build.gradle.kts` falls back to the debug key only when
+  `key.properties` doesn't exist locally (so a fresh checkout without the
+  keystore can still `flutter build apk --release` for local testing) —
+  CI always has it, so every published release uses the real key.
+
 ### Android APK — CI-built only, do not hand-build for releases
 CI attaches `app-release.apk` to every tagged GitHub release. Don't rename
 it (renaming has historically produced APKs twice the normal size with

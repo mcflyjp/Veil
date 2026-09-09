@@ -1,8 +1,24 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Release signing. CI writes key.properties from GitHub secrets before every
+// build (see .github/workflows/build.yml); for a local release build, copy
+// key.properties.example to key.properties and fill in the real values
+// (ask for the keystore file + passwords — never regenerate this keystore,
+// every future update install depends on every release being signed with
+// the same key). key.properties and *.keystore are gitignored — never commit them.
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+val hasReleaseSigning = keystorePropertiesFile.exists()
+if (hasReleaseSigning) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -31,9 +47,26 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            // Falls back to debug signing only when key.properties is missing
+            // (e.g. a fresh local checkout with no release keystore) so
+            // `flutter build apk --release` still works for local testing.
+            // CI always has key.properties — every published release is
+            // signed with the real key.
+            signingConfig = if (hasReleaseSigning) signingConfigs.getByName("release")
+                             else signingConfigs.getByName("debug")
             isMinifyEnabled = false
             isShrinkResources = false
         }
