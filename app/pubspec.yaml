@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.1.40+40
+version: 0.1.41+41
 
 environment:
   sdk: ^3.10.8
@@ -66,6 +66,27 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+
+# flutter_launcher_icons config — regenerate with `dart run flutter_launcher_icons`
+# after changing any file under assets/icon/. Source: the "Veil mark" concept
+# (speech bubble + lock, signature blue gradient) approved 2026-09-09.
+flutter_launcher_icons:
+  image_path: "assets/icon/icon_full.png"
+  android: true
+  min_sdk_android: 21
+  adaptive_icon_background: "assets/icon/icon_background.png"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  ios: true
+  macos:
+    generate: true
+    image_path: "assets/icon/icon_full.png"
+  web:
+    generate: true
+    image_path: "assets/icon/icon_full.png"
+    background_color: "#1D3FAE"
+    theme_color: "#1D3FAE"
+  remove_alpha_ios: true
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

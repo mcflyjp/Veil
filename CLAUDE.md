@@ -77,6 +77,19 @@ curl -s https://veilmsg.com/version.json
 **Do not** create a Cloudflare Pages / Vercel / Netlify project for this.
 `veilmsg.com` already has a working, dedicated deployment — use it.
 
+### App icon
+Source assets: `app/assets/icon/icon_full.png` (flat, all platforms except
+Android adaptive), `icon_foreground.png` + `icon_background.png` (Android
+adaptive icon layers). "Veil mark" design (speech bubble + lock), approved
+2026-09-09. After changing any of these:
+```bash
+cd app
+dart run flutter_launcher_icons
+```
+Regenerates every platform's icon files (Android legacy + adaptive, iOS,
+macOS, web favicon/PWA). Don't hand-edit the generated platform icon files
+directly — re-run the generator instead.
+
 ### Android APK — CI-built only, do not hand-build for releases
 CI attaches `app-release.apk` to every tagged GitHub release. Don't rename
 it (renaming has historically produced APKs twice the normal size with

@@ -1,5 +1,18 @@
 # Veil — Development Log
 
+## 2026-09-09 — v0.1.41 (real app icon — "Veil mark")
+
+**[ADD] Real app icon, replacing the default Flutter logo** — Veil has shipped with the unmodified default Flutter "f" logo as its icon since the project started; every screen/build has been branded, but the icon itself never was. Fixed using the "Veil mark" concept (speech bubble + lock, signature blue gradient) that was approved from the earlier mockup canvas.
+
+Source assets are hand-authored SVG (`assets/icon/icon_full.svg`-equivalent — the SVGs themselves aren't checked in, only the rasterized PNGs used by the generator) rendered to 1024×1024 PNG via `sharp`, not AI-generated — an exact, deterministic reproduction of the approved mockup rather than a re-generated variant. Three variants:
+- `icon_full.png` — flat square (gradient + mark), used for iOS/macOS/web/legacy Android
+- `icon_foreground.png` — mark only, transparent background, recentered with generous margin so it isn't clipped by Android's circular/squircle adaptive-icon masks
+- `icon_background.png` — gradient only, no mark, for Android's adaptive icon background layer
+
+Wired in via `flutter_launcher_icons` (new dev dependency, config in `pubspec.yaml`) — `dart run flutter_launcher_icons` regenerates all platform icon sizes (Android legacy + adaptive, iOS, macOS, web favicon/PWA icons) from the three source PNGs in `assets/icon/`. Re-run that command any time the icon design changes; don't hand-edit the generated platform icon files.
+
+---
+
 ## 2026-09-09 — v0.1.40 (web deployment fixed, version footer, process documented)
 
 **[ADD] Version footer in Settings** — bottom of the Settings screen now shows "Veil vX.Y.Z (build N)" via `package_info_plus` (already a dependency, previously unused). Direct motivation: there was no reliable way to confirm which build was actually running on a device, which is exactly what caused the "only 4 themes" confusion below — Android doesn't auto-update sideloaded APKs, so a stale install looks identical to a real bug until you can check the version.
