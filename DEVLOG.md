@@ -1,5 +1,18 @@
 # Veil — Development Log
 
+## 2026-09-10 — TURN server live (voice/video calls, Phase 0 of 3)
+
+**[INFRA] coturn TURN/STUN server running on the Oracle VM** — first step toward 1:1 voice/video calls. Details:
+- Installed via Oracle Linux's EPEL developer repo (`oracle-epel-release-el9`, disabled by default — had to enable it)
+- Reuses the existing `matrix.veilmsg.com` hostname/cert rather than a new subdomain — no new DNS needed. A certbot deploy hook (`/etc/letsencrypt/renewal-hooks/deploy/coturn-cert.sh`) copies the renewed cert to `/etc/coturn/certs/` (coturn's own user can't read `/etc/letsencrypt` directly) and reloads the service on every renewal.
+- **Key fix**: coturn defaulted to binding the VM's private IP (`10.0.0.235`) with no `external-ip` mapping — on Oracle Cloud the public IP is NAT'd at the infrastructure edge, so without this, coturn would've told every client to connect to an unreachable private address. Fixed with explicit `listening-ip`/`relay-ip`/`external-ip` directives. Verified with a real STUN binding request (`turnutils_stunclient`), not just a port check — confirmed it now reports the public IP.
+- HMAC shared-secret auth (`use-auth-secret` + `static-auth-secret`) — ephemeral, time-limited credentials, no static password to leak.
+- Opened TCP/UDP 3478 (STUN/TURN) and 5349 (TURN+TLS), plus UDP 49160–49360 (relay range) at both the OS firewall (`firewalld`) and — the part that actually blocked reachability until fixed — the OCI Security List, a separate cloud-level firewall that needed the OCI web console (no API/CLI credentials available for it in-session).
+
+**Next**: Phase 1 — wire `flutter_webrtc` + `matrix_dart_sdk`'s existing `voip` module into the app (call signaling + media). Then Phase 2 (call UI), Phase 3 (ring-when-app-is-closed via FCM, decided separately since it's valuable independent of calls).
+
+---
+
 ## 2026-09-09 — v0.1.42 (fixed release signing — no more forced uninstalls)
 
 **[FIX] Every release forced users to uninstall before installing the next one** — root cause: `android/app/build.gradle.kts` signed release builds with the **debug** signing config (Flutter's default template setting, never replaced). CI runs on a fresh ephemeral machine every time, so the debug keystore isn't guaranteed consistent between builds — Android refuses to install an update signed with a different key than the currently-installed one, forcing a full uninstall every time.
