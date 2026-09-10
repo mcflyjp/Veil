@@ -28,7 +28,14 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
   Future<void> _answer(CallService calls) async {
     if (_resolving) return;
     setState(() => _resolving = true);
-    await calls.answer();
+    try {
+      await calls.answer();
+    } catch (e) {
+      // Don't leave the screen stuck with both buttons disabled forever —
+      // let the user retry or decline instead.
+      if (mounted) setState(() => _resolving = false);
+      return;
+    }
     if (!mounted) return;
     context.pushReplacement('/call/active');
   }
@@ -36,7 +43,13 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
   Future<void> _decline(CallService calls) async {
     if (_resolving) return;
     setState(() => _resolving = true);
-    await calls.reject();
+    try {
+      await calls.reject();
+    } catch (e) {
+      // Fall through to pop regardless — declining should always be able
+      // to get the user off this screen even if the reject signal failed
+      // to send.
+    }
     if (mounted) context.pop();
   }
 
@@ -47,7 +60,20 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
 
     // The call vanished from under us — caller hung up before we answered,
     // or it was answered on another of our devices. Bail out.
-    if (call == null || calls.phase != CallPhase.incoming) {
+    //
+    // Deliberately NOT checking `calls.phase != CallPhase.incoming` here —
+    // that used to also trigger this, but answering a call legitimately
+    // advances the phase past `incoming` (kRinging -> kCreateAnswer ->
+    // kConnecting -> ...) WHILE `_answer()` below is still awaiting
+    // `calls.answer()`, before it gets a chance to navigate to
+    // `/call/active` itself. That raced this auto-pop against the real
+    // navigation and won every time — the answering side would pop back to
+    // whatever was underneath with the call still silently connecting in
+    // the background (audio would work; there was just no screen showing
+    // it). `_resolving` is true for that whole window, so skip the
+    // auto-dismiss then and let `_answer`/`_decline` drive navigation
+    // explicitly instead.
+    if (!_resolving && call == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && GoRouter.of(context).canPop()) context.pop();
       });
@@ -58,7 +84,8 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
     final remoteUser = call?.remoteUserId != null
         ? call!.room.unsafeGetUserFromMemoryOrFallback(call.remoteUserId!)
         : null;
-    final name = remoteUser?.calcDisplayname() ??
+    final name =
+        remoteUser?.calcDisplayname() ??
         call?.room.getLocalizedDisplayname() ??
         'Unknown caller';
     final isVideo = call?.type == CallType.kVideo;
@@ -67,49 +94,64 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
       canPop: false,
       child: Scaffold(
         backgroundColor: const Color(0xFF0B0F1A),
-        body: SafeArea(
-          child: Column(
-            children: [
-              // ── Caller identity ──────────────────────────────────────────
-              const Spacer(flex: 2),
-              BuddyAvatar(
-                initial: name.isNotEmpty ? name[0].toUpperCase() : '?',
-                tc: tc,
-                size: 120,
-                avatarUrl: remoteUser?.avatarUrl,
-                client: client,
-              ),
-              const SizedBox(height: 24),
-              Text(name,
-                  style: const TextStyle(
-                      color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text(
-                isVideo ? 'Incoming video call…' : 'Incoming voice call…',
-                style: const TextStyle(color: Colors.white70, fontSize: 15),
-              ),
-              const Spacer(flex: 3),
-
-              // ── Answer / decline ─────────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _CallActionButton(
-                      icon: Icons.call_end,
-                      background: const Color(0xFFE53935),
-                      onTap: call == null ? null : () => _decline(calls),
-                    ),
-                    _CallActionButton(
-                      icon: isVideo ? Icons.videocam : Icons.call,
-                      background: const Color(0xFF43A047),
-                      onTap: call == null ? null : () => _answer(calls),
-                    ),
-                  ],
+        // SizedBox.expand forces this to take the full available space even
+        // under the loose constraints go_router's page-transition machinery
+        // hands its child (see the matching comment in in_call_screen.dart —
+        // same underlying issue, and this Column's Spacer widgets need a
+        // bounded height to size correctly in the first place).
+        body: SizedBox.expand(
+          child: SafeArea(
+            child: Column(
+              children: [
+                // ── Caller identity ──────────────────────────────────────────
+                const Spacer(flex: 2),
+                BuddyAvatar(
+                  initial: name.isNotEmpty ? name[0].toUpperCase() : '?',
+                  tc: tc,
+                  size: 120,
+                  avatarUrl: remoteUser?.avatarUrl,
+                  client: client,
                 ),
-              ),
-            ],
+                const SizedBox(height: 24),
+                Text(
+                  name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  isVideo ? 'Incoming video call…' : 'Incoming voice call…',
+                  style: const TextStyle(color: Colors.white70, fontSize: 15),
+                ),
+                const Spacer(flex: 3),
+
+                // ── Answer / decline ─────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 48,
+                    vertical: 32,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _CallActionButton(
+                        icon: Icons.call_end,
+                        background: const Color(0xFFE53935),
+                        onTap: call == null ? null : () => _decline(calls),
+                      ),
+                      _CallActionButton(
+                        icon: isVideo ? Icons.videocam : Icons.call,
+                        background: const Color(0xFF43A047),
+                        onTap: call == null ? null : () => _answer(calls),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -121,21 +163,31 @@ class _CallActionButton extends StatelessWidget {
   final IconData icon;
   final Color background;
   final VoidCallback? onTap;
-  const _CallActionButton({required this.icon, required this.background, this.onTap});
+  const _CallActionButton({
+    required this.icon,
+    required this.background,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 68,
-          height: 68,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: onTap == null ? background.withAlpha(120) : background,
-            boxShadow: [BoxShadow(color: background.withAlpha(100), blurRadius: 16, spreadRadius: 2)],
+    onTap: onTap,
+    customBorder: const CircleBorder(),
+    child: Container(
+      width: 68,
+      height: 68,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: onTap == null ? background.withAlpha(120) : background,
+        boxShadow: [
+          BoxShadow(
+            color: background.withAlpha(100),
+            blurRadius: 16,
+            spreadRadius: 2,
           ),
-          child: Icon(icon, color: Colors.white, size: 30),
-        ),
-      );
+        ],
+      ),
+      child: Icon(icon, color: Colors.white, size: 30),
+    ),
+  );
 }

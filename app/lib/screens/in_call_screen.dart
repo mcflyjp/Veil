@@ -48,7 +48,17 @@ class _InCallScreenState extends State<InCallScreen> {
   Future<void> _init() async {
     await _localRenderer.initialize();
     await _remoteRenderer.initialize();
-    if (mounted) setState(() => _renderersReady = true);
+    if (!mounted) return;
+    setState(() => _renderersReady = true);
+    // _watchCall's first run (during initState's synchronous first build)
+    // happened before renderers were ready, so _refreshRenderers bailed out
+    // immediately without attaching anything — and _watchCall only calls it
+    // again for a genuinely NEW call, not this one we already saw. Without
+    // this, a stream that was already attached to the CallSession before
+    // this screen mounted (always true for the caller's own local stream,
+    // set up by CallService.startCall() before InCallScreen ever pushes)
+    // would never reach the renderer at all.
+    _refreshRenderers(_watchedCall);
   }
 
   // Re-subscribes to the active call's stream-add/remove events whenever the
@@ -61,8 +71,12 @@ class _InCallScreenState extends State<InCallScreen> {
     _watchedCall = call;
     _refreshRenderers(call);
     if (call == null) return;
-    _streamAddSub = call.onStreamAdd.stream.listen((_) => _refreshRenderers(call));
-    _streamRemovedSub = call.onStreamRemoved.stream.listen((_) => _refreshRenderers(call));
+    _streamAddSub = call.onStreamAdd.stream.listen(
+      (_) => _refreshRenderers(call),
+    );
+    _streamRemovedSub = call.onStreamRemoved.stream.listen(
+      (_) => _refreshRenderers(call),
+    );
   }
 
   void _refreshRenderers(CallSession? call) {
@@ -121,10 +135,12 @@ class _InCallScreenState extends State<InCallScreen> {
     final remoteUser = call?.remoteUserId != null
         ? call!.room.unsafeGetUserFromMemoryOrFallback(call.remoteUserId!)
         : null;
-    final name = remoteUser?.calcDisplayname() ??
+    final name =
+        remoteUser?.calcDisplayname() ??
         call?.room.getLocalizedDisplayname() ??
         'Unknown';
-    final hasRemoteVideo = calls.isVideoCall && _remoteRenderer.srcObject != null;
+    final hasRemoteVideo =
+        calls.isVideoCall && _remoteRenderer.srcObject != null;
 
     String statusLabel;
     switch (calls.phase) {
@@ -145,17 +161,33 @@ class _InCallScreenState extends State<InCallScreen> {
       canPop: false,
       child: Scaffold(
         backgroundColor: const Color(0xFF0B0F1A),
+        // fit: StackFit.expand is required here — this Stack's children are
+        // ALL Positioned/Positioned.fill (no plain non-positioned child), and
+        // go_router's page-transition machinery (even NoTransitionPage, via
+        // CustomTransitionPage) hands its child LOOSE constraints so it CAN
+        // animate size. A Stack with only positioned children under loose
+        // constraints collapses to the smallest size that fits its content
+        // instead of filling the screen — which is exactly the "everything
+        // crammed into a ~140px column" bug this fixes. StackFit.expand forces
+        // it to always take the full available space regardless.
         body: Stack(
+          fit: StackFit.expand,
           children: [
             // ── Video / avatar backdrop ─────────────────────────────────
             Positioned.fill(
               child: hasRemoteVideo
-                  ? RTCVideoView(_remoteRenderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
+                  ? RTCVideoView(
+                      _remoteRenderer,
+                      objectFit:
+                          RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                    )
                   : Container(
                       color: const Color(0xFF0B0F1A),
                       child: Center(
                         child: BuddyAvatar(
-                          initial: name.isNotEmpty ? name[0].toUpperCase() : '?',
+                          initial: name.isNotEmpty
+                              ? name[0].toUpperCase()
+                              : '?',
                           tc: tc,
                           size: 140,
                           avatarUrl: remoteUser?.avatarUrl,
@@ -166,7 +198,9 @@ class _InCallScreenState extends State<InCallScreen> {
             ),
 
             // ── Local self-view (video calls only) ──────────────────────
-            if (calls.isVideoCall && !calls.isCameraOff && _localRenderer.srcObject != null)
+            if (calls.isVideoCall &&
+                !calls.isCameraOff &&
+                _localRenderer.srcObject != null)
               Positioned(
                 top: 56,
                 right: 16,
@@ -174,9 +208,11 @@ class _InCallScreenState extends State<InCallScreen> {
                 height: 140,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: RTCVideoView(_localRenderer,
-                      mirror: true,
-                      objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                  child: RTCVideoView(
+                    _localRenderer,
+                    mirror: true,
+                    objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                  ),
                 ),
               ),
 
@@ -186,11 +222,22 @@ class _InCallScreenState extends State<InCallScreen> {
                 padding: const EdgeInsets.only(top: 24),
                 child: Column(
                   children: [
-                    Text(name,
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text(statusLabel, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                    Text(
+                      statusLabel,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -214,7 +261,9 @@ class _InCallScreenState extends State<InCallScreen> {
                     const SizedBox(width: 18),
                     if (calls.isVideoCall) ...[
                       _CallControlButton(
-                        icon: calls.isCameraOff ? Icons.videocam_off : Icons.videocam,
+                        icon: calls.isCameraOff
+                            ? Icons.videocam_off
+                            : Icons.videocam,
                         active: calls.isCameraOff,
                         onTap: calls.toggleCamera,
                       ),
@@ -246,7 +295,12 @@ class _CallControlButton extends StatelessWidget {
   final bool active; // "toggled on" visual state (e.g. muted) — filled white bg
   final Color? background;
   final VoidCallback? onTap;
-  const _CallControlButton({required this.icon, this.active = false, this.background, this.onTap});
+  const _CallControlButton({
+    required this.icon,
+    this.active = false,
+    this.background,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
