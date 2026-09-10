@@ -1,5 +1,13 @@
 # Veil — Development Log
 
+## 2026-09-10 — v0.1.43 (1:1 voice/video calls — Phases 1 & 2 shipped)
+
+**[ADD] First release with calling.** Phases 0–2 (TURN server, `CallService`/`flutter_webrtc` signaling+media, and the call UI) are all in this build — see the two entries directly below for the full technical detail on each. Shipping now instead of holding for more local testing, since it needs two real devices to actually exercise (one CI-signed build both phones can install is a better test setup than two manually-sideloaded debug APKs anyway).
+
+**Known gaps, not blocking this release but worth knowing before you rely on it**: no ringtone sound yet (incoming calls are silent, visual-only), no speaker/earpiece toggle, group calls not supported (1:1 only), and calls won't ring if the app is fully closed/killed — that's Phase 3 (needs FCM push), not yet started.
+
+---
+
 ## 2026-09-10 — Call UI (voice/video calls, Phase 2 of 3)
 
 **[ADD] Incoming-call screen, in-call screen, and call buttons in the chat title bar** — the visible half of 1:1 calling, built entirely on top of Phase 1's `CallService`.
@@ -11,7 +19,7 @@
 
 **Not done yet, called out explicitly**: no ringtone sound (still a no-op per Phase 1, needs a sound asset — Decline/Answer works fine without one, just silent), no speaker-toggle button (`CallSession` doesn't expose one publicly; would need `flutter_webrtc`'s `Helper.setSpeakerphoneOn` wired in separately), not manually tested end-to-end on two real devices (no second device/account available in-session — verified by `flutter analyze` clean + `flutter build apk --debug` succeeding, which confirms compile correctness and that the native video-rendering code links, not actual call behavior over the TURN server). Try a real call between two devices before considering this phase done in practice.
 
-No version bump/tag yet — same reasoning as Phase 0/1, holding off until this gets an actual two-device test pass.
+Update: shipped as v0.1.43 anyway rather than waiting on a local two-device test — see the entry above.
 
 **Next**: Phase 3 — ring when the app is fully closed (needs FCM push; `NotificationService` currently only fires while the app's own sync loop is running). Also worth circling back to: a ringtone asset, and a real two-device test of Phases 1–2 together.
 
