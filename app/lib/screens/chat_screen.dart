@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:video_player/video_player.dart';
+import '../core/call_service.dart';
 import '../core/client_manager.dart';
 import '../core/aim_theme.dart';
 import '../core/disappearing_message_service.dart';
@@ -340,6 +341,25 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ── Group membership ──────────────────────────────────────────────────
 
+  // Starts a 1:1 call and pushes the in-call screen. See core/call_service.dart
+  // for what happens next — this is just the entry point.
+  Future<void> _startCall(Room room, {required bool video}) async {
+    final calls = context.read<CallService>();
+    if (calls.inCall) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Already in a call')));
+      return;
+    }
+    try {
+      await calls.startCall(room, video: video);
+      if (mounted) context.push('/call/active');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Couldn\'t start call: $e')));
+    }
+  }
+
   Future<void> _addMember() async {
     final room = _room;
     if (room == null) return;
@@ -639,6 +659,9 @@ class _ChatScreenState extends State<ChatScreen> {
             onBack: () => context.go('/buddylist'),
             onTimer: _setDisappearing,
             onAddMember: room.isDirectChat ? null : _addMember,
+            // Calls are 1:1 only for now — see core/call_service.dart.
+            onVoiceCall: room.isDirectChat ? () => _startCall(room, video: false) : null,
+            onVideoCall: room.isDirectChat ? () => _startCall(room, video: true) : null,
           ),
 
           // ── Message area ─────────────────────────────────────────────
@@ -1686,9 +1709,11 @@ class _ChatTitleBar extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback? onTimer;
   final VoidCallback? onAddMember;
+  final VoidCallback? onVoiceCall;
+  final VoidCallback? onVideoCall;
   const _ChatTitleBar({required this.title, required this.tc,
       required this.avatarUrl, required this.client, required this.onBack,
-      this.onTimer, this.onAddMember});
+      this.onTimer, this.onAddMember, this.onVoiceCall, this.onVideoCall});
 
   @override
   Widget build(BuildContext context) {
@@ -1711,6 +1736,14 @@ class _ChatTitleBar extends StatelessWidget {
         Expanded(child: Text('Veil — $title',
           style: TextStyle(color: tc.titleOnColor, fontSize: 18, fontWeight: FontWeight.bold),
           overflow: TextOverflow.ellipsis)),
+        if (onVoiceCall != null)
+          InkWell(onTap: onVoiceCall,
+            child: Padding(padding: const EdgeInsets.all(8),
+              child: Icon(Icons.call_outlined, color: tc.titleOnColor, size: 24))),
+        if (onVideoCall != null)
+          InkWell(onTap: onVideoCall,
+            child: Padding(padding: const EdgeInsets.all(8),
+              child: Icon(Icons.videocam_outlined, color: tc.titleOnColor, size: 24))),
         if (onAddMember != null)
           InkWell(onTap: onAddMember,
             child: Padding(padding: const EdgeInsets.all(8),

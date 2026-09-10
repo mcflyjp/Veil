@@ -1,5 +1,22 @@
 # Veil — Development Log
 
+## 2026-09-10 — Call UI (voice/video calls, Phase 2 of 3)
+
+**[ADD] Incoming-call screen, in-call screen, and call buttons in the chat title bar** — the visible half of 1:1 calling, built entirely on top of Phase 1's `CallService`.
+- `lib/screens/incoming_call_screen.dart` — full-screen prompt pushed automatically (see below) when `CallService.onIncomingCall` fires. Caller avatar/name (via `remoteUserId` → `Room.unsafeGetUserFromMemoryOrFallback`), Answer/Decline buttons. Answer awaits `CallService.answer()` then replaces itself with the in-call screen; if the call vanishes out from under it (caller cancelled, answered on another device) it pops itself.
+- `lib/screens/in_call_screen.dart` — local/remote video via `flutter_webrtc`'s `RTCVideoRenderer`/`RTCVideoView`, re-subscribing to `CallSession.onStreamAdd`/`onStreamRemoved` whenever the active call changes (the remote stream only exists once negotiation completes, well after the screen mounts). Voice calls fall back to a big `BuddyAvatar` instead of a video surface. Mute/camera-toggle/switch-camera/hangup controls, a live call-duration timer once `CallPhase.connected`, and self-pops when `CallService.activeCall` goes back to null.
+- Two new top-level routes, `/call/incoming` and `/call/active` — deliberately *outside* the `ShellRoute`/`SplitShell` tree so they render as true full-screen overlays instead of getting laid out inside the wide-screen two-panel split.
+- `main.dart`'s `_VeilAppState` subscribes to `CallService.onIncomingCall` in `initState` (same pattern as the existing `NotificationService.onTap` → router wiring) and pushes `/call/incoming` — this is the only "global" auto-navigation; everything else (answering, hanging up, the call ending) is handled locally by each screen watching `CallService` and popping/pushing itself, which avoids double-navigation races between a global listener and a user-initiated action.
+- `_ChatTitleBar` (in `chat_screen.dart`) gained `onVoiceCall`/`onVideoCall` icon buttons, shown only for `room.isDirectChat` — same `null`-means-hidden pattern as the existing `onAddMember` group-only button. `ChatScreen._startCall()` calls `CallService.startCall()` then pushes `/call/active`; guards against starting a second call with a snackbar if `CallService.inCall` is already true.
+
+**Not done yet, called out explicitly**: no ringtone sound (still a no-op per Phase 1, needs a sound asset — Decline/Answer works fine without one, just silent), no speaker-toggle button (`CallSession` doesn't expose one publicly; would need `flutter_webrtc`'s `Helper.setSpeakerphoneOn` wired in separately), not manually tested end-to-end on two real devices (no second device/account available in-session — verified by `flutter analyze` clean + `flutter build apk --debug` succeeding, which confirms compile correctness and that the native video-rendering code links, not actual call behavior over the TURN server). Try a real call between two devices before considering this phase done in practice.
+
+No version bump/tag yet — same reasoning as Phase 0/1, holding off until this gets an actual two-device test pass.
+
+**Next**: Phase 3 — ring when the app is fully closed (needs FCM push; `NotificationService` currently only fires while the app's own sync loop is running). Also worth circling back to: a ringtone asset, and a real two-device test of Phases 1–2 together.
+
+---
+
 ## 2026-09-10 — CallService wired up (voice/video calls, Phase 1 of 3)
 
 **[ADD] `flutter_webrtc` + matrix_dart_sdk's `voip` module wired into a new `CallService`** — the core plumbing for 1:1 voice/video calls, no UI yet (that's Phase 2). Added:

@@ -154,9 +154,15 @@ are for local device testing only (`flutter build apk --debug`, output at
   through `package:flutter_webrtc/flutter_webrtc.dart`** — flutter_webrtc's
   barrel file hides those two interface names to provide its own (unrelated,
   deprecated) shims under the same names, so importing through it resolves
-  to the wrong class and silently breaks `implements WebRTCDelegate`. UI
-  (incoming-call screen, in-call screen, chat title bar call button) is a
-  later phase — `CallService` itself has none.
+  to the wrong class and silently breaks `implements WebRTCDelegate`.
+  UI lives in `screens/incoming_call_screen.dart` and `screens/in_call_screen.dart`,
+  routed at top-level paths `/call/incoming`/`/call/active` (outside
+  `ShellRoute`/`SplitShell` so they render full-screen). `main.dart` pushes
+  `/call/incoming` globally on `CallService.onIncomingCall`; every other
+  transition (answer, hangup, call-ended) is handled locally by each screen
+  watching `CallService` and popping/pushing itself — don't add more global
+  navigation listeners for call state, it'll race with the local ones.
+  Call buttons live in `_ChatTitleBar` (`onVoiceCall`/`onVideoCall`), DMs only.
 
 ## Devlog
 All changes are logged in `DEVLOG.md` before committing.

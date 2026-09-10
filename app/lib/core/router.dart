@@ -7,6 +7,8 @@ import '../screens/new_chat_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/hidden_chats_screen.dart';
 import '../screens/linked_devices_screen.dart';
+import '../screens/incoming_call_screen.dart';
+import '../screens/in_call_screen.dart';
 import '../widgets/split_shell.dart';
 
 // Route table for the whole app. Login lives outside the shell; every
@@ -32,6 +34,20 @@ GoRouter buildRouter(ClientManager mgr) => GoRouter(
       },
       routes: [
         GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+
+        // Full-screen call routes — sit outside the ShellRoute so they
+        // overlay whatever's underneath (buddy list or a chat) rather than
+        // rendering inside SplitShell's side-panel layout. Pushed by
+        // VeilApp on an incoming call, or directly from ChatScreen's call
+        // buttons for an outgoing one — see main.dart / call_service.dart.
+        GoRoute(
+          path: '/call/incoming',
+          pageBuilder: (_, __) => _noTransition(const IncomingCallScreen()),
+        ),
+        GoRoute(
+          path: '/call/active',
+          pageBuilder: (_, __) => _noTransition(const InCallScreen()),
+        ),
 
         ShellRoute(
           builder: (context, state, child) =>

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -98,6 +100,7 @@ class VeilApp extends StatefulWidget {
 
 class _VeilAppState extends State<VeilApp> {
   late final _router = buildRouter(widget.clientManager);
+  StreamSubscription? _incomingCallSub;
 
   @override
   void initState() {
@@ -105,6 +108,18 @@ class _VeilAppState extends State<VeilApp> {
     NotificationService.instance.onTap = (roomId) {
       _router.go('/buddylist/chat/${Uri.encodeComponent(roomId)}');
     };
+    // Pushes the incoming-call screen over whatever's currently on screen.
+    // CallService (registered on the MultiProvider above VeilApp) is safe
+    // to read here since it's already mounted as an ancestor.
+    _incomingCallSub = context.read<CallService>().onIncomingCall.listen((_) {
+      _router.push('/call/incoming');
+    });
+  }
+
+  @override
+  void dispose() {
+    _incomingCallSub?.cancel();
+    super.dispose();
   }
 
   @override
