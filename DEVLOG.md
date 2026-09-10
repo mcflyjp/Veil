@@ -1,5 +1,17 @@
 # Veil — Development Log
 
+## 2026-09-10 — v0.1.45 (switch-camera button — made failure visible, not silenced)
+
+**[FIX/DIAGNOSTIC] Switch-camera (flip to back camera) button appeared to do nothing.** v0.1.44's two-device test confirmed everything else works — audio, video, mute, hangup, front-camera preview all functioning correctly. This is the one thing that didn't.
+
+Could not get real device logs remotely to confirm the exact native failure this session, so this is *not* a confirmed root-cause fix like the v0.1.44 bugs — it's a diagnostic fix: `CallService.switchCamera()` was calling `flutter_webrtc`'s `Helper.switchCamera()` and discarding both its return value (a `bool` indicating success/failure) and any thrown exception — wired straight to the button's `onTap` with nothing awaiting or checking the result. If the native call was failing (Android's `GetUserMediaImpl.switchCamera` has real failure paths — capturer not found for the track ID, `onCameraSwitchError` from the underlying WebRTC camera API), there was **no way to tell** from the Dart side; the button just silently did nothing, which is exactly what got reported.
+
+Fixed: `switchCamera()` now returns whether it actually succeeded and logs any exception instead of swallowing it; the UI awaits that and shows a `SnackBar` ("Couldn't switch camera") on failure instead of silence.
+
+**What this doesn't do**: guarantee the underlying switch now works — if it's a genuine native/plugin-level issue (e.g. camera busy, only one camera enumerated on that specific device, a `flutter_webrtc` bug), this will now show an error message rather than fix the switch itself. Next test should show either (a) it now works — the previous "failure" was silent success that just needed something to trigger a rebuild, or (b) an actual error surfaces that gives a concrete next lead instead of nothing.
+
+---
+
 ## 2026-09-10 — v0.1.44 (fixed real, confirmed call bugs from first two-device test)
 
 First real test of calling (v0.1.43) surfaced concrete, reproducible bugs — this fixes all of them. Full root-cause deep dive, not guesses; each was confirmed via a live repro before being called fixed.

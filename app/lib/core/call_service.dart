@@ -122,10 +122,18 @@ class CallService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> switchCamera() async {
+  /// Returns whether the switch actually succeeded, so the UI can tell the
+  /// user when it didn't — previously this was fire-and-forget from the
+  /// button's onTap with no way to see a failure (silent no-op on tap).
+  Future<bool> switchCamera() async {
     final tracks = _activeCall?.localUserMediaStream?.stream?.getVideoTracks();
-    if (tracks == null || tracks.isEmpty) return;
-    await webrtc.Helper.switchCamera(tracks.first);
+    if (tracks == null || tracks.isEmpty) return false;
+    try {
+      return await webrtc.Helper.switchCamera(tracks.first);
+    } catch (e) {
+      Logs().w('[CallService] switchCamera failed', e);
+      return false;
+    }
   }
 
   // ── Internal: wiring a CallSession's state stream to our CallPhase ─────

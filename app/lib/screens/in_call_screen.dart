@@ -100,6 +100,20 @@ class _InCallScreenState extends State<InCallScreen> {
     _wasConnected = connected;
   }
 
+  // Was previously wired straight to calls.switchCamera as onTap, so a
+  // failure (native "video capturer not found" / camera busy / etc.) was
+  // silently swallowed — the button just appeared to do nothing. Now shows
+  // the user something instead of leaving them guessing whether they
+  // mis-tapped it.
+  Future<void> _switchCamera(CallService calls) async {
+    final ok = await calls.switchCamera();
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Couldn't switch camera")));
+    }
+  }
+
   String _formatDuration(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -270,7 +284,7 @@ class _InCallScreenState extends State<InCallScreen> {
                       const SizedBox(width: 18),
                       _CallControlButton(
                         icon: Icons.cameraswitch,
-                        onTap: calls.switchCamera,
+                        onTap: () => _switchCamera(calls),
                       ),
                       const SizedBox(width: 18),
                     ],
