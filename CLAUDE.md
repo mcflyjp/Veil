@@ -144,5 +144,19 @@ are for local device testing only (`flutter build apk --debug`, output at
   bool fields on `VeilThemeColors`, not hardcoded per-theme branches — see
   `core/veil_theme.dart`.
 
+- **Voice/video calls** (in progress — see DEVLOG for phase status):
+  `core/call_service.dart`'s `CallService` wraps matrix_dart_sdk's
+  `VoIP`/`CallSession` (standard Matrix `m.call.*` 1:1 signaling) with
+  `flutter_webrtc` as the media backend. Wired into `main.dart`'s
+  `MultiProvider`/login-state listener exactly like `VeilUserPrefs`
+  (`attachClient`/`detachClient`). **Import `MediaDevices`/`RTCPeerConnection`
+  etc. from `package:webrtc_interface/webrtc_interface.dart` directly, not
+  through `package:flutter_webrtc/flutter_webrtc.dart`** — flutter_webrtc's
+  barrel file hides those two interface names to provide its own (unrelated,
+  deprecated) shims under the same names, so importing through it resolves
+  to the wrong class and silently breaks `implements WebRTCDelegate`. UI
+  (incoming-call screen, in-call screen, chat title bar call button) is a
+  later phase — `CallService` itself has none.
+
 ## Devlog
 All changes are logged in `DEVLOG.md` before committing.

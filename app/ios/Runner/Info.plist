@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Veil needs camera access for video calls and to set a profile photo.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Veil needs microphone access for voice and video calls.</string>
 </dict>
 </plist>

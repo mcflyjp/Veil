@@ -1,5 +1,25 @@
 # Veil — Development Log
 
+## 2026-09-10 — CallService wired up (voice/video calls, Phase 1 of 3)
+
+**[ADD] `flutter_webrtc` + matrix_dart_sdk's `voip` module wired into a new `CallService`** — the core plumbing for 1:1 voice/video calls, no UI yet (that's Phase 2). Added:
+- Dependencies: `flutter_webrtc` (media backend) + `webrtc_interface` (the abstract types matrix_dart_sdk's `WebRTCDelegate` contract is typed against — needed as a direct import because flutter_webrtc's own barrel file hides `MediaDevices`/`Navigator` from `webrtc_interface` to provide its own deprecated static-method shim under those same names, so pulling the *interface* types through the `flutter_webrtc` import would silently resolve to the wrong class and fail `implements WebRTCDelegate`).
+- `lib/core/call_service.dart` — `CallService extends ChangeNotifier`, wraps matrix_dart_sdk's `VoIP`/`CallSession` classes:
+  - `CallPhase` state machine: idle → outgoing/incoming → connecting → connected, collapsed from `CallSession`'s more granular `CallState` stream
+  - `attachClient()`/`detachClient()` — same lifecycle pattern as `VeilUserPrefs`, wired into `main.dart`'s login-state listener
+  - `startCall(room, video:)` — infers the callee automatically for direct chats (`room.directChatMatrixID`) so only that user's devices ring, not the whole room
+  - `answer()`/`reject()`/`hangup()`/`toggleMute()`/`toggleCamera()`/`switchCamera()`
+  - `onIncomingCall` stream — Phase 2's incoming-call screen will listen on this instead of polling
+  - Private `_VeilWebRTCDelegate implements WebRTCDelegate` bridges the SDK's call events to flutter_webrtc's `createPeerConnection`/`navigator.mediaDevices`. `playRingtone()`/`stopRingtone()` are no-ops for now — no sound asset shipped yet, deferred to Phase 2 alongside the incoming-call screen. Group calls (`handleNewGroupCall`) are a no-op — 1:1 only for now.
+- Android: added `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `ACCESS_NETWORK_STATE`, `BLUETOOTH`/`BLUETOOTH_ADMIN` (≤30)/`BLUETOOTH_CONNECT` permissions, plus optional camera hardware `<uses-feature>` tags (`android:required="false"` — a call-capable build shouldn't be Play Store–excluded from cameraless devices, voice-only calls still work).
+- iOS: added `NSCameraUsageDescription`/`NSMicrophoneUsageDescription` to `Info.plist` — previously absent entirely; without these the OS silently kills the app on the first permission prompt instead of showing one.
+
+No version bump/tag for this — same as Phase 0 (TURN server), this is groundwork with nothing user-visible yet. `flutter analyze` clean; debug APK builds successfully with the new native plugin linked in (verified via `flutter build apk --debug`).
+
+**Next**: Phase 2 — call UI (incoming-call screen, in-call screen with local/remote video renderers, call button in the chat title bar) and a ringtone asset. Then Phase 3 (ring-when-app-is-closed via FCM).
+
+---
+
 ## 2026-09-10 — TURN server live (voice/video calls, Phase 0 of 3)
 
 **[INFRA] coturn TURN/STUN server running on the Oracle VM** — first step toward 1:1 voice/video calls. Details:

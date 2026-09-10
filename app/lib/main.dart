@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'core/call_service.dart';
 import 'core/client_manager.dart';
 import 'core/notification_service.dart';
 import 'core/router.dart';
@@ -52,19 +53,24 @@ void main() async {
   }
 
   final prefs = VeilUserPrefs();
+  final calls = CallService();
 
-  // Attach the Matrix client whenever the user is logged in so settings
-  // are synced to/from Matrix account data automatically.
+  // Attach the Matrix client whenever the user is logged in so settings are
+  // synced to/from Matrix account data automatically, and so CallService can
+  // send/receive m.call.* signaling for that client.
   clientManager.addListener(() {
     if (clientManager!.isLoggedIn) {
       prefs.attachClient(clientManager.client);
+      calls.attachClient(clientManager.client);
     } else {
       prefs.detachClient();
+      calls.detachClient();
     }
   });
   // Attach immediately if already logged in (e.g. app restart with saved session).
   if (clientManager.isLoggedIn) {
     prefs.attachClient(clientManager.client);
+    calls.attachClient(clientManager.client);
   }
 
   runApp(
@@ -72,6 +78,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider.value(value: clientManager),
         ChangeNotifierProvider.value(value: prefs),
+        ChangeNotifierProvider.value(value: calls),
       ],
       child: VeilApp(clientManager: clientManager),
     ),
