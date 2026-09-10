@@ -1,5 +1,15 @@
 # Veil — Development Log
 
+## 2026-09-10 — Fixed iOS IPA CI job (root cause found, was broken since project start)
+
+**[FIX] `Build iOS IPA` job reported success but never attached anything** — this was flagged as a known, unresolved bug in earlier entries ("produces zero output despite the job reporting success"). Root-caused while re-checking releases for this session's work: `flutter build ipa --no-codesign` only produces `build/ios/archive/Runner.xcarchive` — it does **not** export an actual `.ipa` file, because Apple's IPA export step (`xcodebuild -exportArchive`) requires a code signing identity, which `--no-codesign` deliberately skips. So the workflow's `app/build/ios/ipa/*.ipa` glob has never matched anything, on any release — `actions/upload-artifact` and `softprops/action-gh-release` both skip silently on a no-match glob rather than failing the step, which is exactly why this looked like success in the Actions UI.
+
+Fixed by packaging the archive ourselves: an IPA is just a zip of `Payload/<AppName>.app`, which is exactly the raw format Sideloadly/AltStore/TrollStore expect to sign themselves — so this isn't a workaround, it's what should have been there from the start. New "Package unsigned IPA" step in `build.yml` copies `Runner.xcarchive`'s `Runner.app` into `Payload/`, zips it to `Runner.ipa`, and only then do the existing upload/attach steps have something to find.
+
+Confirmed via CI logs from the v0.1.42 run: `Build IPA (unsigned)` step succeeded (`✓ Built build/ios/archive/Runner.xcarchive (226.7MB)`), then `Upload IPA artifact` logged `No files were found with the provided path: app/build/ios/ipa/*.ipa` and moved on. The iOS job was added right after v0.1.30 — every release since then (v0.1.31 through v0.1.42, spot-checked v0.1.41/v0.1.42's actual release assets to confirm) shipped Android-only despite the release notes always describing an iOS sideload install path.
+
+---
+
 ## 2026-09-10 — v0.1.43 (1:1 voice/video calls — Phases 1 & 2 shipped)
 
 **[ADD] First release with calling.** Phases 0–2 (TURN server, `CallService`/`flutter_webrtc` signaling+media, and the call UI) are all in this build — see the two entries directly below for the full technical detail on each. Shipping now instead of holding for more local testing, since it needs two real devices to actually exercise (one CI-signed build both phones can install is a better test setup than two manually-sideloaded debug APKs anyway).

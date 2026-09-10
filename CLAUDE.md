@@ -20,8 +20,11 @@ Oracle VM, matrix-dart-sdk v7.
 
 CI (`.github/workflows/build.yml`) builds on every `v*` tag push:
 - **Android APK** — built + attached to the GitHub release automatically
-- **iOS IPA** — unsigned, built + attached (known bug: currently produces
-  zero output despite the job reporting success — see DEVLOG, unresolved)
+- **iOS IPA** — unsigned, built + attached. `flutter build ipa --no-codesign`
+  only produces the `.xcarchive` (no signing identity means no actual IPA
+  export) — the workflow packages the archive's `Runner.app` into a real
+  `Payload/Runner.ipa` zip itself (fixed 2026-09-10, was silently producing
+  zero output on every release before this).
 - **Web** — built and uploaded as a CI artifact only. **CI does NOT deploy
   it anywhere.** Deploying the web build to `veilmsg.com` is a separate,
   currently-manual step — see "Deploy web" below.

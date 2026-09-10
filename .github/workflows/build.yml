@@ -111,6 +111,28 @@ jobs:
         working-directory: app
         run: flutter build ipa --no-codesign --obfuscate --split-debug-info=build/debug-info-ios
 
+      # `flutter build ipa --no-codesign` only produces the .xcarchive — it
+      # never exports an actual .ipa, since Apple's export step requires a
+      # signing identity that --no-codesign deliberately skips. Package one
+      # ourselves: an IPA is just a zip of Payload/<AppName>.app, which is
+      # exactly what Sideloadly/AltStore/TrollStore expect to sign
+      # themselves (see the release notes below). Without this step,
+      # build/ios/ipa/*.ipa never matches anything and the upload/attach
+      # steps silently skip with no error — this was broken from day one.
+      - name: Package unsigned IPA
+        working-directory: app
+        run: |
+          set -e
+          ARCHIVE_APP="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
+          if [ ! -d "$ARCHIVE_APP" ]; then
+            echo "::error::Runner.app not found in the xcarchive — build must have failed upstream"
+            exit 1
+          fi
+          mkdir -p build/ios/ipa/Payload
+          cp -r "$ARCHIVE_APP" build/ios/ipa/Payload/
+          (cd build/ios/ipa && zip -r -q Runner.ipa Payload && rm -rf Payload)
+          echo "Packaged $(du -h build/ios/ipa/Runner.ipa | cut -f1) IPA"
+
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
