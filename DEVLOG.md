@@ -1,5 +1,21 @@
 # Veil — Development Log
 
+## 2026-09-11 — v0.1.46 (push notifications — Phase 3 of 3 complete)
+
+**[ADD] Flutter-side push wiring, completing Phase 3.** Builds on the Sygnal gateway from earlier today (see entry directly below).
+
+- New `core/push_service.dart` — `PushService`, same `attachClient`/`detachClient` lifecycle pattern as `VeilUserPrefs`/`CallService`. On login: gets the device's FCM token, registers it as a Matrix pusher (`POST /client/v3/pushers/set` via `client.request()` directly — matrix_dart_sdk 7.4.0 doesn't have a generated convenience method for this one endpoint), pointing at `https://veilmsg.com/_matrix/push/v1/notify`. Re-registers on `FirebaseMessaging.onTokenRefresh`.
+- **Deliberately does not attempt background decryption.** Veil's rooms are always E2E encrypted, so a push's `content` field is Megolm ciphertext — the homeserver never had plaintext to send in the first place, decrypt-only-in-foreground is the honest ceiling here without building a whole background-sync-with-persisted-session pipeline (real risk of Olm/Megolm ratchet desync running two sessions against the same keys from two isolates — deliberately not attempted this round). What Dendrite *does* send unencrypted — `sender_display_name`/`room_name` (room/member metadata isn't secret in Matrix, only message bodies are) — is enough for a real "so-and-so sent a message in X" notification with no decryption at all. Same reasoning means a background push can't be distinguished as a call vs. a regular message either (`type` is just `m.room.encrypted` either way) — shows the same generic notification; `CallService`'s existing to-device/timeline listening (verified working in the v0.1.44/45 two-device test) picks up the real invite once the app opens.
+- `@pragma('vm:entry-point')` top-level background handler (required — FCM hands background messages to a fresh, minimal isolate with no access to the running app's `ClientManager`/`CallService`/anything). Shows the notification via its own `flutter_local_notifications` instance, using the **same notification ID derivation** (`roomId.hashCode`) as `NotificationService.showMessage` so a background push and a later live-sync notification for the same room replace each other instead of stacking as two separate alerts.
+- **Found and fixed a real pre-existing gap while here**: tapping a notification when the app was *fully closed* (not just backgrounded) did nothing — `NotificationService` only wired up `onDidReceiveNotificationResponse` for taps while already running, never checked `getNotificationAppLaunchDetails()` for the cold-launch case. Added `pendingLaunchRoomId`, consumed once in `main.dart` right after `onTap` is wired up. This was always a real gap, just a rare one before push notifications made "app fully closed, get a notification, tap it" a routine path instead of an edge case.
+- Firebase/Gradle/pubspec wiring for this was already done in the previous commit (see entry below) — this is purely the app-side push handling.
+
+**Known limitation, not fixed this round**: `PushService.detachClient()` doesn't delete the pusher on logout — by the time it fires, `ClientManager.logout()` has already cleared the access token needed to authenticate that delete call. The pusher just goes stale server-side rather than being cleanly removed. Harmless (nothing sensitive in these pushes to leak) but not tidy — revisit if it ever becomes a real problem.
+
+Verified: `flutter analyze` clean, debug APK builds with Firebase + the new push code linked in. **Not yet tested with a real push arriving to a killed app** — that needs an actual account logged in on a device with the app fully closed, which wasn't done this session; next real-device test should specifically try this.
+
+---
+
 ## 2026-09-11 — Push notification gateway live (Phase 3 of 3, infra half)
 
 **[INFRA] Sygnal (Matrix's reference push gateway) running on the Oracle VM, bridging Dendrite's push events to FCM.** This is the infrastructure Phase 3 (ring/notify when the app is fully closed) needs — the Flutter-side wiring (pusher registration, background message handling) is the remaining piece, tracked separately below.

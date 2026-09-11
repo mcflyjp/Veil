@@ -19,6 +19,15 @@ class NotificationService {
   /// Called when the user taps a notification. Receives the roomId payload.
   void Function(String roomId)? onTap;
 
+  /// Set during init() if the app process itself was started by tapping a
+  /// notification (as opposed to a normal launch, or a tap while already
+  /// running — those go through `onTap` above via onDidReceiveNotification
+  /// Response instead). `init()` runs before `onTap` is assigned in
+  /// main.dart, so this can't just call `onTap` directly at that point —
+  /// callers should check this once, right after setting `onTap`, and
+  /// clear it so it's only consumed once per cold launch.
+  String? pendingLaunchRoomId;
+
   Future<void> init() async {
     if (kIsWeb) return;
 
@@ -30,6 +39,11 @@ class NotificationService {
         if (roomId != null) onTap?.call(roomId);
       },
     );
+
+    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+    if (launchDetails?.didNotificationLaunchApp ?? false) {
+      pendingLaunchRoomId = launchDetails?.notificationResponse?.payload;
+    }
 
     // Create high-importance channel for Android 8+
     const channel = AndroidNotificationChannel(

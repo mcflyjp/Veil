@@ -195,8 +195,17 @@ so don't re-attempt the venv approach without a real reason to revisit).
   under `com.veil.veil` is the correct one — an older mis-registered entry
   under `com.veil.app` also exists (harmless, unused, predates this work,
   left alone rather than cleaned up).
-- Flutter-side wiring (pusher registration, background message handling)
-  is tracked as in-progress — see DEVLOG for current status.
+- **Flutter-side**: `core/push_service.dart`'s `PushService`, same
+  `attachClient`/`detachClient` pattern as `VeilUserPrefs`/`CallService`.
+  Registers the FCM token as a Matrix pusher on login. Deliberately does
+  NOT decrypt in the background (rooms are always E2E — Dendrite never has
+  plaintext to send anyway); shows a generic notification built from the
+  unencrypted `sender_display_name`/`room_name` metadata the push payload
+  does carry. Can't distinguish a call push from a message push in the
+  background for the same reason (`type` is always `m.room.encrypted`) —
+  `CallService`'s normal event listening picks up the real invite once the
+  app opens. `NotificationService.pendingLaunchRoomId` handles the
+  cold-launch case (app fully closed, tap a notification to open it).
 
 ## Devlog
 All changes are logged in `DEVLOG.md` before committing.
