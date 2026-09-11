@@ -14,6 +14,11 @@
 
 Verified: `flutter analyze` clean, debug APK builds with Firebase + the new push code linked in. **Not yet tested with a real push arriving to a killed app** — that needs an actual account logged in on a device with the app fully closed, which wasn't done this session; next real-device test should specifically try this.
 
+**[FIX] v0.1.46's first CI run shipped Android-only — iOS and web both failed to build, caught after the fact.**
+- **iOS**: `firebase_core` requires a higher `IPHONEOS_DEPLOYMENT_TARGET` than the project's default (13.0). Bumped to 15.0 in `Runner.xcodeproj/project.pbxproj` (all 3 build configs) and `ios/Flutter/AppFrameworkInfo.plist`'s `MinimumOSVersion`.
+- **Web**: a real dart2js compile error, and a good example of why "it built locally" isn't proof by itself — my own local `flutter build web --release` had *silently succeeded* against this same broken dependency, because an incremental-build cache from an earlier compile skipped recompiling the affected file. `flutter clean` + a truly fresh build reproduced the same failure CI hit. Root cause: `firebase_core_web` 3.11.0 (the version `firebase_core: ^4.14.0` resolves to, and pub.dev's current latest) has a genuine upstream regression — `e.isA<JSObject>()` on a plain `Object`-typed value doesn't compile under this Flutter/Dart SDK, inside the package's own source, nothing to do with Veil's code. `3.10.0` compiles clean. Pinned via `dependency_overrides` in `pubspec.yaml`, commented with exactly when it's safe to remove (once a newer `firebase_core_web` release fixes the regression).
+- Lesson for next time: after any dependency change, verify with a genuinely clean build (`flutter clean` first) before trusting a "success," and don't call CI's job list green until every platform in it actually is.
+
 ---
 
 ## 2026-09-11 — Push notification gateway live (Phase 3 of 3, infra half)

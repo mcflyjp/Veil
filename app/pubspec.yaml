@@ -133,3 +133,13 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# firebase_core_web 3.11.0 (latest as of 2026-09-11) fails to compile for
+# web with a real dart2js error inside the package's own code (`isA` not
+# defined on `Object` in firebase_core_web.dart) — a genuine upstream
+# regression under this Flutter/Dart SDK, not something in Veil's code.
+# 3.10.0 compiles cleanly. Check pub.dev for a newer fixed release before
+# ever bumping firebase_core past 4.14.0 (which resolves 3.11.0 by
+# default) and remove this override once one exists.
+dependency_overrides:
+  firebase_core_web: 3.10.0
