@@ -206,6 +206,12 @@ so don't re-attempt the venv approach without a real reason to revisit).
   `CallService`'s normal event listening picks up the real invite once the
   app opens. `NotificationService.pendingLaunchRoomId` handles the
   cold-launch case (app fully closed, tap a notification to open it).
+  **`init()`/`attachClient()` skip iOS too, not just web** — only the
+  Android app is registered in the `veil-510bf` Firebase project so far;
+  no `GoogleService-Info.plist` exists, and calling
+  `Firebase.initializeApp()` without one crashes at launch. Register an
+  iOS Firebase app (mirrors the Android app registration this session) and
+  add the plist before removing that guard.
 
 ## Devlog
 All changes are logged in `DEVLOG.md` before committing.
