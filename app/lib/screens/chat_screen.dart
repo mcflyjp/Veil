@@ -64,6 +64,14 @@ class _ChatScreenState extends State<ChatScreen> {
   // Per-message disappear timer (0 = off)
   int _disappearAfterSecs = 0;
 
+  // Latest message eventId we've actually sent a read marker for — lets
+  // build() cheaply notice "a newer message arrived while this chat stayed
+  // open" and re-mark-read, without re-sending the same marker on every
+  // rebuild. Without this, only the chat-open moment ever marked anything
+  // read; messages that arrived while the user was already looking at the
+  // conversation never did until they left and reopened it.
+  String? _lastReadMarkerEventId;
+
   String get _disappearLabel => _disappearAfterSecs == 0 ? ''
       : _disappearAfterSecs < 60 ? '${_disappearAfterSecs}s'
       : '${_disappearAfterSecs ~/ 60}m';
@@ -175,8 +183,23 @@ class _ChatScreenState extends State<ChatScreen> {
     final tl   = _timeline;
     if (room == null || tl == null) return;
     final latest = tl.events.where((e) => e.type == EventTypes.Message).firstOrNull;
-    if (latest != null) {
-      try { await room.setReadMarker(latest.eventId); } catch (_) {}
+    if (latest != null && latest.eventId != _lastReadMarkerEventId) {
+      _lastReadMarkerEventId = latest.eventId;
+      try {
+        // `eventId` alone only sets the m.fully_read marker (scroll-position
+        // bookkeeping) -- it does NOT send an actual read receipt, which is
+        // what the homeserver's unread notificationCount is actually
+        // computed from. Without `mRead` here, the buddy-list badge and any
+        // "unread" state never clears: every login re-syncs the same old
+        // notification count from the server, which never learned the
+        // messages were read. `mRead` sends a PRIVATE receipt only (matrix_
+        // dart_sdk always sends mReadPrivate; the public m.read receipt
+        // stays off unless client.receiptsPublicByDefault is set) --
+        // consistent with not broadcasting read status to the sender.
+        await room.setReadMarker(latest.eventId, mRead: latest.eventId);
+      } catch (e) {
+        Logs().w('[ChatScreen] Failed to set read marker', e);
+      }
     }
   }
 
@@ -635,6 +658,12 @@ class _ChatScreenState extends State<ChatScreen> {
     final msgEvents = events
         .where((e) => e.type == EventTypes.Message || e.type == EventTypes.Encrypted)
         .toList();
+
+    // Catches messages that arrive via live sync while this chat stays open
+    // (initState/_loadTimeline only cover the chat-open moment itself).
+    // _setReadMarker no-ops if the latest message hasn't actually changed
+    // since the last marker sent, so this is cheap on the common rebuild.
+    _setReadMarker();
 
     // Who is typing right now (excluding ourselves)
     final typingUsers = room.typingUsers

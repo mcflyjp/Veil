@@ -1,5 +1,17 @@
 # Veil — Development Log
 
+## 2026-09-11 — v0.1.47 (fixed stale unread notifications)
+
+**[FIX] Messages you'd already read kept showing as unread on next login — real bug, precisely found.** `Room.setReadMarker()` in matrix_dart_sdk takes two logically separate things: the `eventId` positional argument sets `m.fully_read` (cross-device "where did I leave off" scroll bookkeeping), and a *separate* `mRead` named parameter is what actually sends a read receipt. `ChatScreen._setReadMarker()` only ever passed the first one (`room.setReadMarker(latest.eventId)`) — so Veil was telling the homeserver where you'd scrolled to, but never actually telling it "I've read this," which is what the homeserver's `notification_count` (the buddy-list unread badge, and the value a fresh login's sync re-derives) is computed from. Every login re-synced the same never-actually-acknowledged count.
+
+Fixed: `room.setReadMarker(latest.eventId, mRead: latest.eventId)`. matrix_dart_sdk always sends this as a **private** receipt (`mReadPrivate`) regardless — the public `m.read` receipt (which would tell the *other person* you've seen their message) only goes out if `client.receiptsPublicByDefault` is set, which it isn't here. So this fix doesn't change what other people see, only what the homeserver — and therefore your own badge count — correctly tracks.
+
+Also closed a related gap found while in there: `_setReadMarker()` was only ever called at chat-open time (`initState`/`_loadTimeline`) — messages that arrived while the user stayed in an already-open chat never got marked read until they left and reopened it. Added a cheap check in `build()` (tracks the last-marked event id, no-ops if unchanged) so it re-fires whenever a newer message shows up while the chat stays open.
+
+Verified: `flutter analyze` clean, debug APK builds. Root cause confirmed by reading matrix_dart_sdk's `Room.setReadMarker` source directly rather than guessed — the previous silent `catch (_) {}` around this call meant any failure here was completely invisible; changed to log a warning instead.
+
+---
+
 ## 2026-09-11 — v0.1.46 (push notifications — Phase 3 of 3 complete)
 
 **[ADD] Flutter-side push wiring, completing Phase 3.** Builds on the Sygnal gateway from earlier today (see entry directly below).
