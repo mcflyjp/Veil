@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1070805534211",
+    "project_id": "veil-510bf",
+    "storage_bucket": "veil-510bf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1070805534211:android:92de97853a45c732f13036",
+        "android_client_info": {
+          "package_name": "com.veil.veil"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCqUXNM8e65KU2oMJl1OOHUcHV6C7RpQws"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

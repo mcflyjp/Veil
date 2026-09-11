@@ -167,5 +167,36 @@ are for local device testing only (`flutter build apk --debug`, output at
   navigation listeners for call state, it'll race with the local ones.
   Call buttons live in `_ChatTitleBar` (`onVoiceCall`/`onVideoCall`), DMs only.
 
+### Push notifications (Sygnal push gateway)
+Bridges Dendrite's push events to FCM, for both message and call
+notifications when the app isn't running. Runs as a **Docker container** on
+the VM — see DEVLOG's 2026-09-11 entry for the full multi-hour story of why
+it's Docker and not a plain `pip install` venv (short version: it hangs
+indefinitely on FCM auth from a venv on this ARM64/Oracle-Linux box, for
+reasons never fully root-caused; the official Docker image doesn't hit it,
+so don't re-attempt the venv approach without a real reason to revisit).
+
+- **Endpoint**: `https://veilmsg.com/_matrix/push/v1/notify` (nginx proxies
+  to the container's `127.0.0.1:5000`)
+- **Config**: `/etc/sygnal/sygnal.yaml` + `/etc/sygnal/sygnal-fcm-key.json`
+  (the GCP service account key — real secret, backed up at
+  `secrets/sygnal-fcm-key.json` locally, gitignored, never commit it)
+- **Container**: `sudo docker ps --filter name=sygnal` / `sudo docker logs
+  sygnal` / `sudo docker restart sygnal`. `--restart unless-stopped`, so it
+  survives VM reboots as long as `docker.service` itself is enabled (it is).
+- **To update the image**: `sudo docker pull matrixdotorg/sygnal:latest &&
+  sudo docker rm -f sygnal && sudo docker run -d --name sygnal --restart
+  unless-stopped --no-healthcheck -p 127.0.0.1:5000:5000 -v
+  /etc/sygnal:/etc/sygnal -e SYGNAL_CONF=/etc/sygnal/sygnal.yaml
+  matrixdotorg/sygnal:latest` — `--no-healthcheck` because the image's
+  built-in healthcheck needs `curl`, which isn't in the slim base image
+  (cosmetic-only "unhealthy" status otherwise, doesn't affect function).
+- **Firebase**: project `veil-510bf`. The Android app registered there
+  under `com.veil.veil` is the correct one — an older mis-registered entry
+  under `com.veil.app` also exists (harmless, unused, predates this work,
+  left alone rather than cleaned up).
+- Flutter-side wiring (pusher registration, background message handling)
+  is tracked as in-progress — see DEVLOG for current status.
+
 ## Devlog
 All changes are logged in `DEVLOG.md` before committing.

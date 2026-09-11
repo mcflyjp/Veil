@@ -15,6 +15,12 @@ app/ios/Pods/
 app/macos/Pods/
 app/.symlinks/
 
+# Secrets — never commit (release keystore passwords live in app/android/
+# key.properties, already covered by its own .gitignore; this covers
+# anything else, e.g. secrets/sygnal-fcm-key.json, the Firebase service
+# account key used by the Sygnal push gateway — see CLAUDE.md)
+secrets/
+
 # Other
 *.log
 .DS_Store

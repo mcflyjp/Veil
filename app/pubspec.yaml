@@ -57,6 +57,8 @@ dependencies:
   mobile_scanner: ^5.2.3
   flutter_webrtc: ^1.6.2+hotfix.1
   webrtc_interface: ^1.5.1
+  firebase_core: ^4.14.0
+  firebase_messaging: ^16.6.0
 
 dev_dependencies:
   flutter_test:
