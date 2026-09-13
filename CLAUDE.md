@@ -147,7 +147,8 @@ are for local device testing only (`flutter build apk --debug`, output at
   bool fields on `VeilThemeColors`, not hardcoded per-theme branches — see
   `core/veil_theme.dart`.
 
-- **Voice/video calls** (in progress — see DEVLOG for phase status):
+- **Voice/video calls** (1:1 only, working end-to-end — confirmed on a real
+  two-device test, see DEVLOG for the fixes that came out of it):
   `core/call_service.dart`'s `CallService` wraps matrix_dart_sdk's
   `VoIP`/`CallSession` (standard Matrix `m.call.*` 1:1 signaling) with
   `flutter_webrtc` as the media backend. Wired into `main.dart`'s
