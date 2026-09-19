@@ -1,10 +1,15 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 // Local (on-device) push notification wrapper around flutter_local_notifications.
 // Singleton so ClientManager's onEvent listener and the UI (chat screen open/close,
 // notification tap routing in main.dart) can all reach the same instance.
-// Android only for now — every method no-ops on web.
+// Android only for now — every method no-ops everywhere else (web, and desktop:
+// Windows/macOS/Linux need their own InitializationSettings, and calling into an
+// uninitialized plugin throws — which, from main(), meant the Windows build
+// launched but never showed a window).
 
 class NotificationService {
   NotificationService._();
@@ -28,8 +33,12 @@ class NotificationService {
   /// clear it so it's only consumed once per cold launch.
   String? pendingLaunchRoomId;
 
+  /// Android/iOS mobile only. Desktop platforms have no settings configured here.
+  static bool get _supported =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
   Future<void> init() async {
-    if (kIsWeb) return;
+    if (!_supported) return;
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     await _plugin.initialize(
@@ -70,7 +79,7 @@ class NotificationService {
     required String senderName,
     required String body,
   }) async {
-    if (kIsWeb) return;
+    if (!_supported) return;
     if (activeRoomId == roomId) return; // already looking at this room
 
     const details = NotificationDetails(

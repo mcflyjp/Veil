@@ -50,13 +50,13 @@ class PushService {
 
   String? _registeredToken;
 
-  /// Android only for now. Not just web -- iOS needs its own Firebase app
+  /// Android only for now. Not just web -- iOS and Windows/macOS/Linux need their own Firebase app
   /// registered (a GoogleService-Info.plist, which doesn't exist yet; only
   /// the Android app was set up in the veil-510bf Firebase project this
   /// round) and Firebase.initializeApp() would crash at launch without one.
   /// Revisit once iOS gets its own Firebase app registration.
   Future<void> init() async {
-    if (kIsWeb || Platform.isIOS) return;
+    if (kIsWeb || !Platform.isAndroid) return;
     await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
     await FirebaseMessaging.instance.requestPermission();
@@ -72,7 +72,7 @@ class PushService {
   // Same pattern as VeilUserPrefs/CallService in main.dart's login listener.
 
   Future<void> attachClient(Client client) async {
-    if (kIsWeb || Platform.isIOS) return; // see init() -- no iOS Firebase app yet
+    if (kIsWeb || !Platform.isAndroid) return; // see init() -- Android only for now
     final token = await FirebaseMessaging.instance.getToken();
     if (token != null) await _registerPusher(client, token);
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {

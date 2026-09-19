@@ -1,5 +1,19 @@
 # Veil — Development Log
 
+## 2026-09-18 — Windows desktop build: verified compiling, needed real environment fixes (no version bump)
+
+First time Veil's Windows target was ever actually built (all call testing so far was Android + web). Groundwork for adding screen sharing to the PC client. **`flutter build windows` now succeeds** (`app/build/windows/x64/runner/Release/veil.exe`), but it took several fixes, most of them local-machine setup rather than code:
+
+- **C: drive was full (3.5 GB free)** — the VS installer failed with `0x80070070` (ERROR_DISK_FULL). Freed ~8 GB by deleting old System Restore points (Disk Cleanup); the C++ workload itself then used ~7 GB.
+- **Visual Studio Build Tools was missing the C++ workload** — installed `Microsoft.VisualStudio.Workload.VCTools --includeRecommended` (MSVC, CMake tools, Windows 10 SDK) via `vs_installer.exe modify ... --quiet`.
+- **Empty user NuGet config** — `%APPDATA%/NuGet/NuGet.Config` had a `<packageSources>` with nothing in it, so `audioplayers_windows`'s CMake step failed with `Argument cannot be null or empty: primarySources`. Added `nuget.org` (backup left next to it as `NuGet.Config.bak-2026-09-18`).
+- **ATL headers missing** — `flutter_local_notifications_windows` needs `atlbase.h`. `Microsoft.VisualStudio.Component.VC.ATL` via `vs_installer.exe` exited 0 but silently installed nothing; the same `modify` run through `Installer/setup.exe` with `--force` actually installed it.
+- **The one real code bug**: `NotificationService` and `PushService` only skipped web (and iOS for push). On Windows they'd call into a plugin with no desktop settings configured, throw from `main()` before `runApp`, and leave a process that runs but never shows a window. Both now no-op anywhere but their supported platforms (`NotificationService`: Android/iOS; `PushService`: Android only).
+
+Not yet verified: that the window actually renders and calls work on Windows — the shell this ran in has no interactive desktop to launch GUI apps into, so that needs a manual launch of `veil.exe`. Windows isn't part of CI yet.
+
+---
+
 ## 2026-09-11 — v0.1.47 (fixed stale unread notifications)
 
 **[FIX] Messages you'd already read kept showing as unread on next login — real bug, precisely found.** `Room.setReadMarker()` in matrix_dart_sdk takes two logically separate things: the `eventId` positional argument sets `m.fully_read` (cross-device "where did I leave off" scroll bookkeeping), and a *separate* `mRead` named parameter is what actually sends a read receipt. `ChatScreen._setReadMarker()` only ever passed the first one (`room.setReadMarker(latest.eventId)`) — so Veil was telling the homeserver where you'd scrolled to, but never actually telling it "I've read this," which is what the homeserver's `notification_count` (the buddy-list unread badge, and the value a fresh login's sync re-derives) is computed from. Every login re-synced the same never-actually-acknowledged count.
