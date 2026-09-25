@@ -62,6 +62,7 @@ class CallService extends ChangeNotifier {
   static bool get platformCanShareScreen =>
       kIsWeb || Platform.isWindows || Platform.isLinux || Platform.isMacOS;
   bool get isScreenSharing => _activeCall?.localScreenSharingStream != null;
+  /// Whether a share could start right now (call fully connected).
   bool get canShareScreen =>
       platformCanShareScreen && _phase == CallPhase.connected;
   WrappedMediaStream? get remoteScreenShare =>

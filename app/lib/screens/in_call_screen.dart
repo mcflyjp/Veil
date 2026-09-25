@@ -411,13 +411,17 @@ class _InCallScreenState extends State<InCallScreen> {
                       ),
                       const SizedBox(width: 18),
                     ],
-                    if (calls.canShareScreen) ...[
+                    // Visible for the whole call on platforms that can send;
+                    // greyed out (no onTap) until the call is connected.
+                    if (CallService.platformCanShareScreen) ...[
                       _CallControlButton(
                         icon: calls.isScreenSharing
                             ? Icons.stop_screen_share
                             : Icons.screen_share,
                         active: calls.isScreenSharing,
-                        onTap: () => _toggleShare(calls, tc),
+                        onTap: calls.canShareScreen || calls.isScreenSharing
+                            ? () => _toggleShare(calls, tc)
+                            : null,
                       ),
                       const SizedBox(width: 18),
                     ],
@@ -453,14 +457,17 @@ class _CallControlButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg = background ?? (active ? Colors.white : Colors.white24);
     final fg = background != null || !active ? Colors.white : Colors.black87;
-    return InkWell(
-      onTap: onTap,
-      customBorder: const CircleBorder(),
-      child: Container(
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: bg),
-        child: Icon(icon, color: fg, size: 26),
+    return Opacity(
+      opacity: onTap == null ? 0.4 : 1.0, // disabled look
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: bg),
+          child: Icon(icon, color: fg, size: 26),
+        ),
       ),
     );
   }
