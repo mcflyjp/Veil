@@ -1,6 +1,6 @@
 # Veil — Development Log
 
-## 2026-09-25 — Dark-theme composer fill + chat switching on desktop (no version bump yet)
+## 2026-09-25 — v0.1.48 (dark-theme composer fill + chat switching on desktop)
 
 Two bugs reported from the Windows build:
 
