@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:matrix/matrix.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart' as sqflite;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'disappearing_message_service.dart';
 import 'notification_service.dart';
 
@@ -42,6 +44,13 @@ class ClientManager extends ChangeNotifier {
 
   Future<void> init() async {
     late MatrixSdkDatabase db;
+    // sqflite has no native desktop implementation — on Windows/Linux the
+    // global databaseFactory is unset until the FFI one is installed, which
+    // otherwise fails startup with "databaseFactory not initialized".
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+      sqfliteFfiInit();
+      sqflite.databaseFactory = databaseFactoryFfi;
+    }
     if (kIsWeb) {
       db = await MatrixSdkDatabase.init('veil_db');
     } else {

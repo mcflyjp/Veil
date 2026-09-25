@@ -59,6 +59,8 @@ dependencies:
   webrtc_interface: ^1.5.1
   firebase_core: ^4.14.0
   firebase_messaging: ^16.6.0
+  sqflite_common_ffi: ^2.3.7+1
+  sqlite3_flutter_libs: ^0.5.24
 
 dev_dependencies:
   flutter_test:

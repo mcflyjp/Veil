@@ -10,7 +10,15 @@ First time Veil's Windows target was ever actually built (all call testing so fa
 - **ATL headers missing** — `flutter_local_notifications_windows` needs `atlbase.h`. `Microsoft.VisualStudio.Component.VC.ATL` via `vs_installer.exe` exited 0 but silently installed nothing; the same `modify` run through `Installer/setup.exe` with `--force` actually installed it.
 - **The one real code bug**: `NotificationService` and `PushService` only skipped web (and iOS for push). On Windows they'd call into a plugin with no desktop settings configured, throw from `main()` before `runApp`, and leave a process that runs but never shows a window. Both now no-op anywhere but their supported platforms (`NotificationService`: Android/iOS; `PushService`: Android only).
 
-Not yet verified: that the window actually renders and calls work on Windows — the shell this ran in has no interactive desktop to launch GUI apps into, so that needs a manual launch of `veil.exe`. Windows isn't part of CI yet.
+Follow-up fixes after the first manual launch (2026-09-25):
+
+- **"audioplayers_windows_plugin.dll was not found" at launch** — root cause was a stale CMake cache that pinned `CMAKE_INSTALL_PREFIX` to `C:/Program Files/veil`, so the "install" step put the bundle in the wrong place and the Release folder was missing plugin DLLs. Fix: delete `app/build/windows` and rebuild. If the Release folder ever lacks plugin DLLs again, do that first.
+- **"Startup error: Bad state: databaseFactory not initialized"** — `sqflite` has no Windows/Linux implementation. Added `sqflite_common_ffi` and, in `ClientManager.init()`, `sqfliteFfiInit(); databaseFactory = databaseFactoryFfi;` on Windows/Linux only (Android/iOS untouched).
+- **sqlite3.dll missing from the bundle** — `sqflite_common_ffi` needs a native sqlite3. `sqlite3_flutter_libs` 0.6.0+eol is an empty end-of-life stub (no DLL); pinned `^0.5.24` (resolves 0.5.42), which bundles `sqlite3.dll` on Windows. Do not bump this to 0.6.x while `sqlite3` is 2.x.
+- The rebuilt `veil.exe` now launches and stays running; visually confirming the login screen is still a manual check (this shell has no interactive desktop).
+- **C: drive is nearly full again (~0.95 GB free).** AppData breakdown (GB): Roaming\Claude 14.8, Plex Media Server 10.1, .gradle 8.6, Packages 6.2, LocalLow Pokemon 4.8, wsl 4.7, Google 4.5, npm-cache 4.2, obs-studio 3.5, Adobe 3.4, Microsoft 3.8. Regenerable and safe candidates: npm-cache, .gradle (re-downloads on next Android build), Temp. Nothing deleted yet.
+
+Still not verified: calls on Windows. Windows isn't part of CI yet.
 
 ---
 

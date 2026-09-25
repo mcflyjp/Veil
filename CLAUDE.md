@@ -214,5 +214,22 @@ so don't re-attempt the venv approach without a real reason to revisit).
   iOS Firebase app (mirrors the Android app registration this session) and
   add the plist before removing that guard.
 
+### Windows desktop build (local only, not in CI)
+`cd app && flutter build windows` → `build\windows\x64\runner\Release\veil.exe`
+(run it from that folder; the whole Release dir is the bundle). Setup needs:
+- Visual Studio Build Tools with the C++ workload **plus ATL**
+  (`Microsoft.VisualStudio.Component.VC.ATL`; install via
+  `Installer\setup.exe modify ... --force` — `vs_installer.exe` silently no-ops).
+- A non-empty `%APPDATA%\NuGet\NuGet.Config` package source (nuget.org), or
+  audioplayers_windows' CMake step fails.
+- ~7 GB free on C: for the toolchain.
+- If the Release folder is missing plugin DLLs ("...dll was not found" at
+  launch), a stale CMake cache pinned the install prefix elsewhere: delete
+  `app/build/windows` and rebuild.
+- Desktop guards: `NotificationService` (Android/iOS only) and `PushService`
+  (Android only) no-op elsewhere; `ClientManager.init()` uses
+  `sqflite_common_ffi` on Windows/Linux, which needs `sqlite3_flutter_libs`
+  pinned to `^0.5.x` (0.6.x is an empty stub without the DLL).
+
 ## Devlog
 All changes are logged in `DEVLOG.md` before committing.
