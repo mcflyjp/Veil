@@ -167,6 +167,14 @@ are for local device testing only (`flutter build apk --debug`, output at
   watching `CallService` and popping/pushing itself — don't add more global
   navigation listeners for call state, it'll race with the local ones.
   Call buttons live in `_ChatTitleBar` (`onVoiceCall`/`onVideoCall`), DMs only.
+  **Screen sharing** (desktop + web send, everyone receives; unreleased/untested
+  live as of 2026-09-25): `CallService.startScreenShare`/`stopScreenShare` call
+  `getDisplayMedia` directly and add the stream with `CallSession.addLocalStream(
+  ..., SDPStreamMetadataPurpose.Screenshare)` — don't use the SDK's
+  `setScreensharingEnabled(true)`, its constraints are hardcoded. Source picker
+  is `widgets/screen_share_picker.dart` (flutter_webrtc `desktopCapturer`; the
+  native side needs `getSources` called first so its source list is populated).
+  Quality modes tune the video sender's bitrate/fps/degradationPreference.
 
 ### Push notifications (Sygnal push gateway)
 Bridges Dendrite's push events to FCM, for both message and call

@@ -12,6 +12,7 @@
 // Group calls are out of scope for now; `handleNewGroupCall` is a no-op.
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
@@ -33,11 +34,17 @@ enum CallPhase {
   connected, // media is flowing
 }
 
+/// Trade-off for a screen share. Motion favors smoothness/low latency
+/// (games, video: 60fps, drops resolution first under pressure); detail
+/// favors sharpness (text, slides: 30fps, drops framerate first).
+enum ScreenShareQuality { motion, detail }
+
 class CallService extends ChangeNotifier {
   Client? _client;
   VoIP? _voip;
   CallSession? _activeCall;
   StreamSubscription<CallState>? _callStateSub;
+  StreamSubscription<CallStateChange>? _callEventSub;
 
   CallPhase _phase = CallPhase.idle;
   CallPhase get phase => _phase;
@@ -47,6 +54,18 @@ class CallService extends ChangeNotifier {
   bool get isVideoCall => _activeCall?.type == CallType.kVideo;
   bool get isMuted => _activeCall?.isMicrophoneMuted ?? false;
   bool get isCameraOff => _activeCall?.isLocalVideoMuted ?? false;
+
+  // ── Screen sharing state ─────────────────────────────────────────────
+  // Sharing is desktop + web only: Android needs a MediaProjection
+  // foreground service that isn't wired up, and iOS needs a broadcast
+  // extension. Receiving a share works on every platform.
+  static bool get platformCanShareScreen =>
+      kIsWeb || Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+  bool get isScreenSharing => _activeCall?.localScreenSharingStream != null;
+  bool get canShareScreen =>
+      platformCanShareScreen && _phase == CallPhase.connected;
+  WrappedMediaStream? get remoteScreenShare =>
+      _activeCall?.remoteScreenSharingStream;
 
   /// Fires whenever the SDK hands us a fresh incoming call, so the UI can
   /// push an incoming-call screen without polling `activeCall`.
@@ -136,11 +155,105 @@ class CallService extends ChangeNotifier {
     }
   }
 
+  // ── Screen sharing ───────────────────────────────────────────────────
+
+  /// Starts sharing [sourceId] (a desktopCapturer source id from the picker;
+  /// null on web, where the browser shows its own picker). Adds the capture
+  /// as a separate `m.call` Screenshare stream next to the camera/mic, so
+  /// the other side can show it prominently instead of replacing the camera.
+  /// System audio rides along by default: on Windows a whole-screen share
+  /// excludes Veil's own process (no echo of the call back to the other
+  /// side), a window share captures only that app's audio.
+  /// Returns false (and logs) if capture couldn't start.
+  Future<bool> startScreenShare({
+    String? sourceId,
+    ScreenShareQuality quality = ScreenShareQuality.motion,
+    bool audio = true,
+  }) async {
+    final call = _activeCall;
+    if (call == null || call.pc == null || !platformCanShareScreen) return false;
+    if (call.localScreenSharingStream != null) return true;
+    final fps = quality == ScreenShareQuality.motion ? 60 : 30;
+    try {
+      final stream = await webrtc.navigator.mediaDevices.getDisplayMedia({
+        'audio': audio,
+        'video': kIsWeb
+            ? {'frameRate': fps}
+            : {
+                if (sourceId != null) 'deviceId': {'exact': sourceId},
+                'mandatory': {'frameRate': fps},
+              },
+      });
+      for (final track in stream.getTracks()) {
+        // Source closed (window closed, OS "stop sharing" bar, ...)
+        track.onEnded = () => stopScreenShare();
+      }
+      await call.addLocalStream(stream, SDPStreamMetadataPurpose.Screenshare);
+      notifyListeners();
+      // The sender only exists once addTrack ran; tune now, and once more
+      // after negotiation settles in case the first attempt raced it.
+      unawaited(_tuneScreenShareSender(call, stream, quality));
+      Future.delayed(const Duration(seconds: 2),
+          () => _tuneScreenShareSender(call, stream, quality));
+      return true;
+    } catch (e) {
+      Logs().w('[CallService] startScreenShare failed', e);
+      return false;
+    }
+  }
+
+  Future<void> stopScreenShare() async {
+    final call = _activeCall;
+    if (call == null || call.localScreenSharingStream == null) return;
+    try {
+      await call.setScreensharingEnabled(false);
+    } catch (e) {
+      Logs().w('[CallService] stopScreenShare failed', e);
+    }
+    notifyListeners();
+  }
+
+  /// Raises the video sender's bitrate cap and picks what degrades first
+  /// under congestion — WebRTC's defaults are tuned for a talking head and
+  /// make screen content blurry or choppy.
+  Future<void> _tuneScreenShareSender(
+    CallSession call,
+    MediaStream stream,
+    ScreenShareQuality quality,
+  ) async {
+    try {
+      final ids = stream.getVideoTracks().map((t) => t.id).toSet();
+      final motion = quality == ScreenShareQuality.motion;
+      for (final sender in await call.pc?.getSenders() ?? <RTCRtpSender>[]) {
+        final track = sender.track;
+        if (track == null || track.kind != 'video' || !ids.contains(track.id)) {
+          continue;
+        }
+        final params = sender.parameters;
+        final encodings = params.encodings ?? [RTCRtpEncoding()];
+        for (final e in encodings) {
+          e.maxBitrate = motion ? 10000000 : 6000000;
+          e.maxFramerate = motion ? 60 : 30;
+          e.scaleResolutionDownBy = 1.0;
+        }
+        params.encodings = encodings;
+        params.degradationPreference = motion
+            ? RTCDegradationPreference.MAINTAIN_FRAMERATE
+            : RTCDegradationPreference.MAINTAIN_RESOLUTION;
+        await sender.setParameters(params);
+      }
+    } catch (e) {
+      Logs().w('[CallService] tuning screen share sender failed', e);
+    }
+  }
+
   // ── Internal: wiring a CallSession's state stream to our CallPhase ─────
 
   void _setActiveCall(CallSession? call) {
     _callStateSub?.cancel();
     _callStateSub = null;
+    _callEventSub?.cancel();
+    _callEventSub = null;
     _activeCall = call;
 
     if (call == null) {
@@ -153,6 +266,11 @@ class CallService extends ChangeNotifier {
         ? CallPhase.outgoing
         : CallPhase.incoming;
     _callStateSub = call.onCallStateChanged.stream.listen(_onCallStateChanged);
+    // Streams (camera, screen shares) appearing/disappearing on either side
+    // fire this; listeners read isScreenSharing/remoteScreenShare off us.
+    _callEventSub = call.onCallEventChanged.stream.listen((event) {
+      if (event == CallStateChange.kFeedsChanged) notifyListeners();
+    });
     notifyListeners();
   }
 
@@ -206,6 +324,7 @@ class CallService extends ChangeNotifier {
   @override
   void dispose() {
     _callStateSub?.cancel();
+    _callEventSub?.cancel();
     _incomingCallController.close();
     super.dispose();
   }

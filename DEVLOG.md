@@ -1,5 +1,18 @@
 # Veil — Development Log
 
+## 2026-09-25 — Screen sharing (desktop + web sending, all platforms receiving) — built, NOT yet tested live, not released
+
+First cut of screen sharing in 1:1 calls, meant for the Windows client:
+
+- **`CallService`**: `startScreenShare({sourceId, quality, audio})`, `stopScreenShare()`, `isScreenSharing`, `canShareScreen` (connected call + desktop/web), `remoteScreenShare`, and a `kFeedsChanged` listener so the UI refreshes when either side adds/removes a stream. Calls `getDisplayMedia` itself (not the SDK's `setScreensharingEnabled(true)`, whose constraints are a hardcoded `audio/video: true` with no source or fps control), then hands the stream to `CallSession.addLocalStream(..., Screenshare)` so it goes out as its own `m.call` screenshare stream next to camera/mic. Stopping uses the SDK's `setScreensharingEnabled(false)`. A source that ends (window closed, OS stop bar) stops the share.
+- **Quality / latency**: two modes. *Smooth* (default): 60 fps, up to 10 Mbps, degrades resolution first. *Sharp*: 30 fps, up to 6 Mbps, degrades framerate first. Applied via `RTCRtpSender.setParameters` (max bitrate/framerate, `degradationPreference`), tried right after `addTrack` and again 2 s later in case it raced negotiation. No content-hint API exists in flutter_webrtc, so degradation preference stands in for it.
+- **System audio**: on by default (checkbox in the picker). flutter_webrtc's Windows loopback capturer excludes Veil's own process on a whole-screen share, so the call audio does not echo back to the other side; a window share captures only that app's audio.
+- **UI**: new `widgets/screen_share_picker.dart` (screens/windows tabs, thumbnails refreshed every 3 s, quality and audio options, double-click to share). `InCallScreen` gets a share button (desktop/web, once connected), a red "You are sharing your screen / STOP" banner, and renders the other side's share as the main view with `Contain` fit (never cropped) while their camera shrinks to a corner tile. Web skips the picker; the browser shows its own.
+- **Not supported yet**: sending from Android (needs a MediaProjection foreground service) or iOS (broadcast extension); receiving works everywhere the call does. Not done: choosing a share's audio device, multi-monitor hotkeys, group calls.
+- **Needs a live test** (Windows sender to Android/web receiver first): that the remote side actually gets the stream metadata as Screenshare (else it shows as camera video), the bitrate/fps really apply, and share/stop cycles renegotiate cleanly. Windows build compiles.
+
+---
+
 ## 2026-09-25 — v0.1.48 (dark-theme composer fill + chat switching on desktop)
 
 Two bugs reported from the Windows build:
