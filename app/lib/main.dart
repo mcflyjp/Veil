@@ -147,13 +147,29 @@ class _VeilAppState extends State<VeilApp> {
     final prefs = context.watch<VeilUserPrefs>();
     final tc = prefs.colors;
     // dark/glass Veil themes use dark Material baseline; aim/light use light
-    final isDark = prefs.theme == VeilThemeMode.dark || prefs.theme == VeilThemeMode.glass;
+    // (modernDark / retroDark were missing here, so they got the light baseline
+    // and its fixed white input fill.)
+    final isDark = prefs.theme == VeilThemeMode.dark ||
+        prefs.theme == VeilThemeMode.glass ||
+        prefs.theme == VeilThemeMode.modernDark ||
+        prefs.theme == VeilThemeMode.retroDark;
+    // Every TextField without its own decoration (search, login, dialogs,
+    // composer) takes its fill, typed-text color, and cursor from the active
+    // Veil theme instead of the AimTheme baseline's fixed colors.
+    ThemeData themed(ThemeData base) => base.copyWith(
+          scaffoldBackgroundColor: tc.scaffold,
+          inputDecorationTheme: base.inputDecorationTheme.copyWith(
+            fillColor: tc.inputBg,
+            hintStyle: TextStyle(color: tc.previewText),
+          ),
+          textSelectionTheme: TextSelectionThemeData(cursorColor: tc.nameText),
+        );
     return MaterialApp.router(
       title: 'Veil',
       // Override scaffold background so Navigator transitions don't flash the
       // wrong color (e.g. AIM gray on glass/dark themes).
-      theme: AimTheme.light.copyWith(scaffoldBackgroundColor: tc.scaffold),
-      darkTheme: AimTheme.dark.copyWith(scaffoldBackgroundColor: tc.scaffold),
+      theme: themed(AimTheme.light),
+      darkTheme: themed(AimTheme.dark),
       themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
       routerConfig: _router,
       debugShowCheckedModeBanner: false,

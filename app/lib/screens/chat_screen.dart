@@ -855,6 +855,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       decoration:  prefs.underline ? TextDecoration.underline : TextDecoration.none,
                       color: tc.nameText,
                     ),
+                    cursorColor: tc.nameText,
                     decoration: InputDecoration(
                       hintText: 'Type a message...',
                       hintStyle: TextStyle(fontSize: prefs.fontSize, color: tc.previewText),
@@ -898,9 +899,11 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildPillComposer(VeilUserPrefs prefs) {
     final tc = prefs.colors;
     return Container(
-      color: tc.inputBg,
       padding: EdgeInsets.fromLTRB(12, 8, 12, 10 + MediaQuery.viewPaddingOf(context).bottom),
-      decoration: BoxDecoration(border: Border(top: BorderSide(color: tc.divider))),
+      decoration: BoxDecoration(
+        color: tc.inputBg,
+        border: Border(top: BorderSide(color: tc.divider)),
+      ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         SizedBox(
           height: 34,
@@ -988,10 +991,14 @@ class _ChatScreenState extends State<ChatScreen> {
                   decoration:  prefs.underline ? TextDecoration.underline : TextDecoration.none,
                   color: tc.nameText,
                 ),
+                cursorColor: tc.nameText,
                 decoration: InputDecoration(
                   hintText: 'Type a message...',
                   hintStyle: TextStyle(fontSize: prefs.fontSize, color: tc.previewText),
                   border: InputBorder.none,
+                  // the pill Container supplies the color; the app-wide input
+                  // theme's fill would otherwise paint over it
+                  filled: false,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 ),
               ),

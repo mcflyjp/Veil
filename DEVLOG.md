@@ -1,5 +1,16 @@
 # Veil — Development Log
 
+## 2026-09-25 — Dark-theme composer fill + chat switching on desktop (no version bump yet)
+
+Two bugs reported from the Windows build:
+
+- **Text box stayed white in the dark themes.** `main.dart` picked the dark Material baseline only for `dark`/`glass`, so `modernDark` and `retroDark` got the light `AimTheme` with its fixed white `inputDecorationTheme` fill (and the pill composer's TextField inherited that fill on top of its own colored Container). Fixes: `isDark` now includes both; a `themed()` helper overrides the input fill, hint color and cursor color from the active `VeilThemeColors` (so every TextField follows the theme, not just the composer); the pill TextField sets `filled: false` and `cursorColor`; the pill Container had `color` and `decoration` both set (color silently dropped in release), now the color lives in the decoration. Typed text was already `tc.nameText`.
+- **Switching chats on desktop only changed the title.** `chat/:roomId` used an unkeyed `NoTransitionPage`, so go_router reused the same page/State across rooms, and `ChatScreen` reads `roomId` only in `initState` (timeline, active room, read marker). The page and screen are now keyed by room ID (`router.dart`), forcing a fresh State per chat.
+
+Also: cleared `.gradle`, npm-cache and Temp on C: (about 0.95 GB to 17.4 GB free); first Android build afterward re-downloads Gradle deps. Verified only by compile/analyze so far; needs a visual check on Windows.
+
+---
+
 ## 2026-09-18 — Windows desktop build: verified compiling, needed real environment fixes (no version bump)
 
 First time Veil's Windows target was ever actually built (all call testing so far was Android + web). Groundwork for adding screen sharing to the PC client. **`flutter build windows` now succeeds** (`app/build/windows/x64/runner/Release/veil.exe`), but it took several fixes, most of them local-machine setup rather than code:

@@ -18,8 +18,8 @@ import '../widgets/split_shell.dart';
 // logged-in/logged-out split so screens never need their own auth checks.
 
 /// Instant page swap — no slide/fade animation so there is no gray flash.
-Page<void> _noTransition(Widget child) =>
-    NoTransitionPage<void>(child: child);
+Page<void> _noTransition(Widget child, {LocalKey? key}) =>
+    NoTransitionPage<void>(key: key, child: child);
 
 GoRouter buildRouter(ClientManager mgr) => GoRouter(
       initialLocation: '/buddylist',
@@ -59,9 +59,17 @@ GoRouter buildRouter(ClientManager mgr) => GoRouter(
               routes: [
                 GoRoute(
                   path: 'chat/:roomId',
-                  pageBuilder: (_, state) => _noTransition(
-                    ChatScreen(roomId: state.pathParameters['roomId']!),
-                  ),
+                  // Keyed by room: without this, switching chats reuses the
+                  // same page/State (same route template = same page key) and
+                  // ChatScreen only reads roomId in initState, so the body
+                  // stayed on the old room while only the title changed.
+                  pageBuilder: (_, state) {
+                    final roomId = state.pathParameters['roomId']!;
+                    return _noTransition(
+                      ChatScreen(key: ValueKey('chat-$roomId'), roomId: roomId),
+                      key: ValueKey('chat-page-$roomId'),
+                    );
+                  },
                 ),
                 GoRoute(
                   path: 'new',
