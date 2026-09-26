@@ -237,7 +237,7 @@ so don't re-attempt the venv approach without a real reason to revisit).
   `msvcp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll` from `System32` into
   a temp folder, zip it as `Veil-windows-x64.zip`, smoke-test by extracting and
   launching, then `gh release upload vX.Y.Z Veil-windows-x64.zip`. Unsigned
-  (SmartScreen warns on first run). The Dart code lives in `datapp.so`, so
+  (SmartScreen warns on first run). The Dart code lives in `data\app.so`, so
   `veil.exe`'s own timestamp does not change between Dart-only rebuilds.
 - If the Release folder is missing plugin DLLs ("...dll was not found" at
   launch), a stale CMake cache pinned the install prefix elsewhere: delete
