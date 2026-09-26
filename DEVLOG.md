@@ -1,6 +1,6 @@
 # Veil — Development Log
 
-## 2026-09-25 — Screen sharing (desktop + web sending, all platforms receiving) — built, NOT yet tested live, not released
+## 2026-09-25 — v0.1.49 (screen sharing + first Windows desktop build)
 
 First cut of screen sharing in 1:1 calls, meant for the Windows client:
 
@@ -9,7 +9,9 @@ First cut of screen sharing in 1:1 calls, meant for the Windows client:
 - **System audio**: on by default (checkbox in the picker). flutter_webrtc's Windows loopback capturer excludes Veil's own process on a whole-screen share, so the call audio does not echo back to the other side; a window share captures only that app's audio.
 - **UI**: new `widgets/screen_share_picker.dart` (screens/windows tabs, thumbnails refreshed every 3 s, quality and audio options, double-click to share). `InCallScreen` gets a share button (desktop/web, once connected), a red "You are sharing your screen / STOP" banner, and renders the other side's share as the main view with `Contain` fit (never cropped) while their camera shrinks to a corner tile. Web skips the picker; the browser shows its own.
 - **Not supported yet**: sending from Android (needs a MediaProjection foreground service) or iOS (broadcast extension); receiving works everywhere the call does. Not done: choosing a share's audio device, multi-monitor hotkeys, group calls.
-- **Needs a live test** (Windows sender to Android/web receiver first): that the remote side actually gets the stream metadata as Screenshare (else it shows as camera video), the bitrate/fps really apply, and share/stop cycles renegotiate cleanly. Windows build compiles.
+- **Tested live**: Windows sender to an iPhone browser receiver works (share arrives as the main view). Not yet verified: desktop audio actually reaching the receiver, bitrate/fps under real load, Android receiving.
+- **Windows build is now distributed**: v0.1.49 is the first release with a Windows zip (`Veil-windows-x64.zip`, the whole `Release` folder plus the VC++ runtime DLLs so it runs on machines without the redistributable). CI does not build Windows yet, so the zip is built locally and uploaded to the release by hand (`gh release upload`). Unsigned, so SmartScreen will warn on first run.
+- Fix along the way: the share button used to only appear once the call was fully connected; it now shows for the whole call on desktop, faded until connected.
 
 ---
 
