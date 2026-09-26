@@ -231,6 +231,14 @@ so don't re-attempt the venv approach without a real reason to revisit).
 - A non-empty `%APPDATA%\NuGet\NuGet.Config` package source (nuget.org), or
   audioplayers_windows' CMake step fails.
 - ~7 GB free on C: for the toolchain.
+- **Releasing it** (CI doesn't build Windows; first shipped with v0.1.49): after
+  the tag's CI run has created the GitHub release, `flutter clean`, `flutter
+  build windows --release`, copy `Release\*` (minus `*.exp`/`*.lib`) plus
+  `msvcp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll` from `System32` into
+  a temp folder, zip it as `Veil-windows-x64.zip`, smoke-test by extracting and
+  launching, then `gh release upload vX.Y.Z Veil-windows-x64.zip`. Unsigned
+  (SmartScreen warns on first run). The Dart code lives in `datapp.so`, so
+  `veil.exe`'s own timestamp does not change between Dart-only rebuilds.
 - If the Release folder is missing plugin DLLs ("...dll was not found" at
   launch), a stale CMake cache pinned the install prefix elsewhere: delete
   `app/build/windows` and rebuild.
